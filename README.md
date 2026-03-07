@@ -5,7 +5,7 @@
 
 ## Building
 
-Requires `gcc` and `make`. On Windows, use [MinGW](https://www.mingw-w64.org/), [MSYS2](https://www.msys2.org/), or Cygwin.
+Requires `tcc` and `make`. On Windows, use [MinGW](https://www.mingw-w64.org/), [MSYS2](https://www.msys2.org/), or Cygwin.
 
 ---
 

@@ -6,7 +6,7 @@
 # ---------- Toolchain -------------------------------------------
 CC      := gcc
 CFLAGS  := -Wall -Wextra -pedantic -std=c11 -O2
-LDFLAGS :=
+LDFLAGS := -ltcc
 
 # ---------- Detect OS -------------------------------------------
 ifeq ($(OS),Windows_NT)
