@@ -1,7 +1,16 @@
-#include <libtcc.h>
+// #include <libtcc.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define DEBUG true
+
+size_t get_token_len(char* ptr) {
+    size_t len = 0;
+    for (; *ptr != ' '; ptr++) len++;
+    return len;
+}
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
@@ -49,8 +58,28 @@ int main(int argc, char* argv[]) {
     src[src_size] = '\0';
     fclose(f);
 
-    char* gen = src;
+    // char* gen = src;
+    char* c = src;
+    while (true) {
+        if (!DEBUG) break;
 
+        size_t token_len = get_token_len(c);
+        char* token = malloc(token_len + 1);
+        for (size_t i = 0; i < token_len; i++) {
+            token[i] = c[i];
+        }
+        token[token_len] = '\0';
+
+        if (strcmp(token, "vari") == 0) {
+            printf("vari detected.");
+        }
+
+        c += token_len;
+        if (*c == '\0') break;
+        c++;
+    }
+
+    /**
     TCCState* tcc = tcc_new();
     if (!tcc) {
         fprintf(stderr, "Failed to initialize tcc\n");
@@ -78,6 +107,7 @@ int main(int argc, char* argv[]) {
     }
 
     tcc_delete(tcc);
+    **/
     free(exe_name);
     free(src);
     return 0;
