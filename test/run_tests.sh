@@ -48,6 +48,27 @@ for src in "$CASES_DIR"/*.w; do
         fi
         ;;
 
+    codegen_contains\ *)
+        # everything after "codegen_contains " is the substring to look for
+        needle="${expect#codegen_contains }"
+        if [ $compile_status -ne 0 ]; then
+            echo "FAIL $name: expected codegen success, but wlangc failed"
+            echo "$compile_log"
+            fail=$((fail + 1))
+            continue
+        fi
+
+        if grep -qF "$needle" "$out_c"; then
+            echo "PASS $name (codegen_contains)"
+            pass=$((pass + 1))
+        else
+            echo "FAIL $name: generated C does not contain: $needle"
+            echo "--- generated C ---"
+            cat "$out_c"
+            fail=$((fail + 1))
+        fi
+        ;;
+
     exit\ *)
         want_code=$(echo "$expect" | awk '{print $2}')
         if [ $compile_status -ne 0 ]; then
