@@ -29,6 +29,8 @@ typedef enum {
     TOK_ARROW,         // <-
     TOK_PLUS_ASSIGN,   // +=
     TOK_MINUS_ASSIGN,  // -=
+    TOK_STAR_ASSIGN,   // *=
+    TOK_SLASH_ASSIGN,  // /=
     TOK_EQ,
     TOK_NEQ,
     TOK_LT,

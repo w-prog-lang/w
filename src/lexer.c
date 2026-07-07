@@ -176,11 +176,9 @@ Token lexer_next(Lexer* lx) {
         case '-':
             return lex_minus(lx);
         case '*':
-            advance(lx);
-            return make_token(lx, TOK_STAR, start, 1);
+            return lex_two_char(lx, '=', TOK_STAR_ASSIGN, TOK_STAR);
         case '/':
-            advance(lx);
-            return make_token(lx, TOK_SLASH, start, 1);
+            return lex_two_char(lx, '=', TOK_SLASH_ASSIGN, TOK_SLASH);
         case '(':
             advance(lx);
             return make_token(lx, TOK_LPAREN, start, 1);
@@ -230,10 +228,11 @@ const char* token_kind_name(TokenKind kind) {
         "LET",      "VAR",         "RETURN",       "IF",       "ELSE",
         "LOOP",     "STRUCT",      "BREAK",        "CONTINUE", "PLUS",
         "MINUS",    "STAR",        "SLASH",        "ASSIGN",   "DEFINE",
-        "ARROW",    "PLUS_ASSIGN", "MINUS_ASSIGN", "EQ",       "NEQ",
-        "LT",       "GT",          "LE",           "GE",       "LPAREN",
-        "RPAREN",   "LBRACE",      "RBRACE",       "LBRACKET", "RBRACKET",
-        "COMMA",    "SEMI",        "COLON",        "DOT",      "ERROR",
+        "ARROW",    "PLUS_ASSIGN", "MINUS_ASSIGN", "STAR_ASSIGN", "SLASH_ASSIGN",
+        "EQ",       "NEQ",         "LT",           "GT",          "LE",
+        "GE",       "LPAREN",      "RPAREN",       "LBRACE",      "RBRACE",
+        "LBRACKET", "RBRACKET",    "COMMA",        "SEMI",        "COLON",
+        "DOT",      "ERROR",
     };
     return names[kind];
 }

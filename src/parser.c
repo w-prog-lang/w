@@ -273,6 +273,18 @@ static Node* parse_assign_or_expr(Parser* p) {
         return n;
     }
 
+    if (match(p, TOK_STAR_ASSIGN)) {
+        Node* n = build_compound_assign(p, name, name_len, line, TOK_STAR);
+        expect(p, TOK_SEMI, "expected ';' after assignment");
+        return n;
+    }
+
+    if (match(p, TOK_SLASH_ASSIGN)) {
+        Node* n = build_compound_assign(p, name, name_len, line, TOK_SLASH);
+        expect(p, TOK_SEMI, "expected ';' after assignment");
+        return n;
+    }
+
     Node* n = ast_new(p->arena, NODE_IDENT, line);
     n->as.ident.name = name;
     n->as.ident.len = name_len;
@@ -377,6 +389,7 @@ static Node* parse_loop_init(Parser* p) {
 }
 
 // step clause: IDENT '=' expr | IDENT '+=' expr | IDENT '-=' expr
+//            | IDENT '*=' expr | IDENT '/=' expr
 // (does NOT consume a trailing ';' -- it's immediately followed by ')')
 static Node* parse_loop_step(Parser* p) {
     if (!check(p, TOK_IDENT)) {
@@ -401,6 +414,12 @@ static Node* parse_loop_step(Parser* p) {
     }
     if (match(p, TOK_MINUS_ASSIGN)) {
         return build_compound_assign(p, name, name_len, line, TOK_MINUS);
+    }
+    if (match(p, TOK_STAR_ASSIGN)) {
+        return build_compound_assign(p, name, name_len, line, TOK_STAR);
+    }
+    if (match(p, TOK_SLASH_ASSIGN)) {
+        return build_compound_assign(p, name, name_len, line, TOK_SLASH);
     }
 
     error_at(p, p->cur, "expected assignment in loop step");
