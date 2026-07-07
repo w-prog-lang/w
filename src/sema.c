@@ -329,6 +329,29 @@ static void check_stmt(Sema* s, Node* n) {
             }
             break;
 
+        case NODE_LOOP: {
+            s->current = scope_push(s->current);
+
+            if (n->as.loop.init) {
+                check_stmt(s, n->as.loop.init);
+            }
+            if (n->as.loop.cond) {
+                infer_expr(s, n->as.loop.cond);
+            }
+
+            // body gets its own nested scope (via check_block), but can
+            // still see the loop-scope variable (e.g. 'i') via the parent
+            // chain in scope_lookup
+            check_block(s, n->as.loop.body);
+
+            if (n->as.loop.step) {
+                check_stmt(s, n->as.loop.step);
+            }
+
+            s->current = scope_pop(s->current);
+            break;
+        }
+
         case NODE_RETURN:
             if (n->as.return_stmt.expr) {
                 infer_expr(s, n->as.return_stmt.expr);

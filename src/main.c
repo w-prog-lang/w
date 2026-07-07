@@ -142,6 +142,28 @@ static void print_node(Node* n, int depth) {
             }
             break;
 
+        case NODE_LOOP:
+            printf("Loop\n");
+            if (n->as.loop.init) {
+                indent(depth + 1);
+                printf("Init:\n");
+                print_node(n->as.loop.init, depth + 2);
+            }
+            if (n->as.loop.cond) {
+                indent(depth + 1);
+                printf("Cond:\n");
+                print_node(n->as.loop.cond, depth + 2);
+            }
+            if (n->as.loop.step) {
+                indent(depth + 1);
+                printf("Step:\n");
+                print_node(n->as.loop.step, depth + 2);
+            }
+            indent(depth + 1);
+            printf("Body:\n");
+            print_node(n->as.loop.body, depth + 2);
+            break;
+
         case NODE_RETURN:
             printf("Return\n");
             if (n->as.return_stmt.expr) {

@@ -16,6 +16,7 @@ typedef enum {
     NODE_VAR_DECL,
     NODE_ASSIGN,
     NODE_IF,
+    NODE_LOOP,
     NODE_RETURN,
     NODE_BINOP,
     NODE_CALL,
@@ -99,6 +100,13 @@ struct Node {
             const char* text;
             int len;
         } num;
+
+        struct {
+            Node* init;  // NULL if no init clause
+            Node* cond;  // NULL if infinite loop (no cond at all)
+            Node* step;  // NULL if no step clause
+            Node* body;
+        } loop;
     } as;
 };
 

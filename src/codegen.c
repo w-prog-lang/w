@@ -139,6 +139,54 @@ static void emit_stmt(FILE* out, Node* n, int depth) {
             }
             break;
 
+        case NODE_LOOP: {
+            if (n->as.loop.init || n->as.loop.step) {
+                emit_indent(out, depth);
+                fprintf(out, "{\n");
+
+                if (n->as.loop.init) {
+                    emit_stmt(out, n->as.loop.init, depth + 1);
+                }
+
+                emit_indent(out, depth + 1);
+                fprintf(out, "while (");
+                if (n->as.loop.cond) {
+                    emit_expr(out, n->as.loop.cond);
+                } else {
+                    fprintf(out, "1");
+                }
+                fprintf(out, ")\n");
+
+                emit_indent(out, depth + 1);
+                fprintf(out, "{\n");
+                for (int i = 0; i < n->as.loop.body->as.block.stmts.count;
+                     i++) {
+                    emit_stmt(out,
+                              (Node*)n->as.loop.body->as.block.stmts.items[i],
+                              depth + 2);
+                }
+                if (n->as.loop.step) {
+                    emit_stmt(out, n->as.loop.step, depth + 2);
+                }
+                emit_indent(out, depth + 1);
+                fprintf(out, "}\n");
+
+                emit_indent(out, depth);
+                fprintf(out, "}\n");
+            } else {
+                emit_indent(out, depth);
+                fprintf(out, "while (");
+                if (n->as.loop.cond) {
+                    emit_expr(out, n->as.loop.cond);
+                } else {
+                    fprintf(out, "1");
+                }
+                fprintf(out, ")\n");
+                emit_block(out, n->as.loop.body, depth);
+            }
+            break;
+        }
+
         case NODE_RETURN:
             emit_indent(out, depth);
             fprintf(out, "return");

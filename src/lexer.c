@@ -11,7 +11,7 @@ typedef struct {
 static const Keyword keywords[] = {
     {"fn", TOK_KW_FN},         {"let", TOK_KW_LET},       {"var", TOK_KW_VAR},
     {"return", TOK_KW_RETURN}, {"if", TOK_KW_IF},         {"else", TOK_KW_ELSE},
-    {"while", TOK_KW_WHILE},   {"struct", TOK_KW_STRUCT},
+    {"loop", TOK_KW_LOOP},     {"struct", TOK_KW_STRUCT},
 };
 
 void lexer_init(Lexer* lx, const char* src, size_t len) {
@@ -65,6 +65,26 @@ static TokenKind ident_kind(const char* start, int len) {
         }
     }
     return TOK_IDENT;
+}
+
+static Token lex_plus(Lexer* lx) {
+    const char* start = lx->src + lx->pos;
+    advance(lx);
+    if (peek(lx) == '=') {
+        advance(lx);
+        return make_token(lx, TOK_PLUS_ASSIGN, start, 2);
+    }
+    return make_token(lx, TOK_PLUS, start, 1);
+}
+
+static Token lex_minus(Lexer* lx) {
+    const char* start = lx->src + lx->pos;
+    advance(lx);
+    if (peek(lx) == '=') {
+        advance(lx);
+        return make_token(lx, TOK_MINUS_ASSIGN, start, 2);
+    }
+    return make_token(lx, TOK_MINUS, start, 1);
 }
 
 static Token lex_ident(Lexer* lx) {
@@ -151,11 +171,9 @@ Token lexer_next(Lexer* lx) {
 
     switch (c) {
         case '+':
-            advance(lx);
-            return make_token(lx, TOK_PLUS, start, 1);
+            return lex_plus(lx);
         case '-':
-            advance(lx);
-            return make_token(lx, TOK_MINUS, start, 1);
+            return lex_minus(lx);
         case '*':
             advance(lx);
             return make_token(lx, TOK_STAR, start, 1);
@@ -207,12 +225,13 @@ Token lexer_next(Lexer* lx) {
 
 const char* token_kind_name(TokenKind kind) {
     static const char* names[] = {
-        "EOF",      "IDENT",  "NUM",    "STRING", "FN",     "LET",
-        "VAR",      "RETURN", "IF",     "ELSE",   "WHILE",  "STRUCT",
-        "PLUS",     "MINUS",  "STAR",   "SLASH",  "ASSIGN", "DEFINE",
-        "ARROW",    "EQ",     "NEQ",    "LT",     "GT",     "LE",
-        "GE",       "LPAREN", "RPAREN", "LBRACE", "RBRACE", "LBRACKET",
-        "RBRACKET", "COMMA",  "SEMI",   "COLON",  "DOT",    "ERROR",
+        "EOF",    "IDENT",       "NUM",          "STRING", "FN",     "LET",
+        "VAR",    "RETURN",      "IF",           "ELSE",   "LOOP",   "STRUCT",
+        "PLUS",   "MINUS",       "STAR",         "SLASH",  "ASSIGN", "DEFINE",
+        "ARROW",  "PLUS_ASSIGN", "MINUS_ASSIGN", "EQ",     "NEQ",    "LT",
+        "GT",     "LE",          "GE",           "LPAREN", "RPAREN", "LBRACE",
+        "RBRACE", "LBRACKET",    "RBRACKET",     "COMMA",  "SEMI",   "COLON",
+        "DOT",    "ERROR",
     };
     return names[kind];
 }

@@ -15,16 +15,18 @@ typedef enum {
     TOK_KW_RETURN,
     TOK_KW_IF,
     TOK_KW_ELSE,
-    TOK_KW_WHILE,
+    TOK_KW_LOOP,
     TOK_KW_STRUCT,
 
     TOK_PLUS,
     TOK_MINUS,
     TOK_STAR,
     TOK_SLASH,
-    TOK_ASSIGN,  // =
-    TOK_DEFINE,  // :=
-    TOK_ARROW,   // <-
+    TOK_ASSIGN,        // =
+    TOK_DEFINE,        // :=
+    TOK_ARROW,         // <-
+    TOK_PLUS_ASSIGN,   // +=
+    TOK_MINUS_ASSIGN,  // -=
     TOK_EQ,
     TOK_NEQ,
     TOK_LT,

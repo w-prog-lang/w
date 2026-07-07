@@ -226,11 +226,31 @@ static Node* parse_var_decl(Parser* p, int is_var_kw) {
     return n;
 }
 
+static Node* build_compound_assign(Parser* p, const char* name, int name_len,
+                                   int line, TokenKind op) {
+    Node* rhs = parse_expr(p);
+
+    Node* ident = ast_new(p->arena, NODE_IDENT, line);
+    ident->as.ident.name = name;
+    ident->as.ident.len = name_len;
+
+    Node* binop = ast_new(p->arena, NODE_BINOP, line);
+    binop->as.binop.op = op;  // TOK_PLUS or TOK_MINUS
+    binop->as.binop.left = ident;
+    binop->as.binop.right = rhs;
+
+    Node* assign = ast_new(p->arena, NODE_ASSIGN, line);
+    assign->as.assign.name = name;
+    assign->as.assign.name_len = name_len;
+    assign->as.assign.value = binop;
+    return assign;
+}
+
 static Node* parse_assign_or_expr(Parser* p) {
     int line = p->cur.line;
     const char* name = p->cur.start;
     int name_len = p->cur.len;
-    advance(p);  // consumed the leading IDENT already checked by caller
+    advance(p);
 
     if (match(p, TOK_ASSIGN)) {
         Node* n = ast_new(p->arena, NODE_ASSIGN, line);
@@ -241,8 +261,18 @@ static Node* parse_assign_or_expr(Parser* p) {
         return n;
     }
 
-    // bare identifier used as a statement (e.g. "a;") -- illegal per language
-    // rules, but we still parse it structurally; sema.c will reject it.
+    if (match(p, TOK_PLUS_ASSIGN)) {
+        Node* n = build_compound_assign(p, name, name_len, line, TOK_PLUS);
+        expect(p, TOK_SEMI, "expected ';' after assignment");
+        return n;
+    }
+
+    if (match(p, TOK_MINUS_ASSIGN)) {
+        Node* n = build_compound_assign(p, name, name_len, line, TOK_MINUS);
+        expect(p, TOK_SEMI, "expected ';' after assignment");
+        return n;
+    }
+
     Node* n = ast_new(p->arena, NODE_IDENT, line);
     n->as.ident.name = name;
     n->as.ident.len = name_len;
@@ -282,6 +312,131 @@ static Node* parse_return(Parser* p) {
     return n;
 }
 
+// scans ahead (without consuming) to determine whether the loop header
+// contains a top-level ';' before its closing ')' -- if so, it's the
+// three-clause for-style form; otherwise it's the while-style single-cond
+// form. must be called right after consuming the loop's opening '('.
+static int loop_is_three_clause(Parser* p) {
+    Lexer saved_lx = p->lx;
+    Token saved_cur = p->cur;
+    Token saved_prev = p->prev;
+
+    int depth = 0;
+    int result = 0;
+
+    for (;;) {
+        if (check(p, TOK_EOF)) break;
+        if (check(p, TOK_LPAREN)) {
+            depth++;
+        } else if (check(p, TOK_RPAREN)) {
+            if (depth == 0) break;  // reached loop header's closing ')'
+            depth--;
+        } else if (check(p, TOK_SEMI) && depth == 0) {
+            result = 1;
+            break;
+        }
+        advance(p);
+    }
+
+    p->lx = saved_lx;
+    p->cur = saved_cur;
+    p->prev = saved_prev;
+    return result;
+}
+
+// init clause: 'var' IDENT ':=' expr  |  IDENT ':=' expr  |  IDENT '=' expr
+// (reuses parse_var_decl / parse_assign_or_expr, which both consume the
+// trailing ';' -- exactly what's needed between the init and cond clauses)
+static Node* parse_loop_init(Parser* p) {
+    if (check(p, TOK_KW_VAR)) {
+        advance(p);
+        return parse_var_decl(p, 1);
+    }
+
+    if (check(p, TOK_IDENT)) {
+        Lexer saved_lx = p->lx;
+        Token saved_cur = p->cur;
+        Token saved_prev = p->prev;
+
+        advance(p);
+        if (check(p, TOK_DEFINE) || check(p, TOK_COLON)) {
+            p->lx = saved_lx;
+            p->cur = saved_cur;
+            p->prev = saved_prev;
+            return parse_var_decl(p, 0);
+        }
+
+        p->lx = saved_lx;
+        p->cur = saved_cur;
+        p->prev = saved_prev;
+        return parse_assign_or_expr(p);
+    }
+
+    error_at(p, p->cur, "expected loop init clause");
+    return NULL;
+}
+
+// step clause: IDENT '=' expr | IDENT '+=' expr | IDENT '-=' expr
+// (does NOT consume a trailing ';' -- it's immediately followed by ')')
+static Node* parse_loop_step(Parser* p) {
+    if (!check(p, TOK_IDENT)) {
+        error_at(p, p->cur, "expected loop step statement");
+        return NULL;
+    }
+
+    int line = p->cur.line;
+    const char* name = p->cur.start;
+    int name_len = p->cur.len;
+    advance(p);
+
+    if (match(p, TOK_ASSIGN)) {
+        Node* n = ast_new(p->arena, NODE_ASSIGN, line);
+        n->as.assign.name = name;
+        n->as.assign.name_len = name_len;
+        n->as.assign.value = parse_expr(p);
+        return n;
+    }
+    if (match(p, TOK_PLUS_ASSIGN)) {
+        return build_compound_assign(p, name, name_len, line, TOK_PLUS);
+    }
+    if (match(p, TOK_MINUS_ASSIGN)) {
+        return build_compound_assign(p, name, name_len, line, TOK_MINUS);
+    }
+
+    error_at(p, p->cur, "expected assignment in loop step");
+    return NULL;
+}
+
+// loop := 'loop' '{' block '}'                                (infinite)
+//       | 'loop' '(' expr ')' '{' block '}'                   (while-style)
+//       | 'loop' '(' init ';' expr ';' step ')' '{' block '}' (for-style)
+static Node* parse_loop(Parser* p) {
+    int line = p->cur.line;
+    advance(p);  // consume 'loop'
+
+    Node* n = ast_new(p->arena, NODE_LOOP, line);
+    n->as.loop.init = NULL;
+    n->as.loop.cond = NULL;
+    n->as.loop.step = NULL;
+
+    if (match(p, TOK_LPAREN)) {
+        if (loop_is_three_clause(p)) {
+            n->as.loop.init = parse_loop_init(p);
+            n->as.loop.cond = parse_expr(p);
+            expect(p, TOK_SEMI, "expected ';' after loop condition");
+            n->as.loop.step = parse_loop_step(p);
+            expect(p, TOK_RPAREN, "expected ')' after loop step");
+        } else {
+            n->as.loop.cond = parse_expr(p);
+            expect(p, TOK_RPAREN, "expected ')' after loop condition");
+        }
+    }
+    // no '(' at all -> infinite loop, nothing more to parse before '{'
+
+    n->as.loop.body = parse_block(p);
+    return n;
+}
+
 static Node* parse_stmt(Parser* p) {
     if (check(p, TOK_KW_VAR)) {
         advance(p);  // consume 'var'
@@ -290,6 +445,10 @@ static Node* parse_stmt(Parser* p) {
 
     if (check(p, TOK_KW_IF)) {
         return parse_if(p);
+    }
+
+    if (check(p, TOK_KW_LOOP)) {
+        return parse_loop(p);
     }
 
     if (check(p, TOK_KW_RETURN)) {
