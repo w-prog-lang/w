@@ -1,0 +1,13 @@
+CompileFlags:
+  Add:
+    - -std=c11
+    - -xc
+    - -D_POSIX_C_SOURCE=200809L
+
+Index:
+  Background: Build
+
+Style:
+  BasedOnStyle: Google
+  IndentWidth: 4
+  TabWidth: 4
