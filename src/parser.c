@@ -347,6 +347,27 @@ static Node* parse_assign_or_expr(Parser* p) {
     int name_len = p->cur.len;
     advance(p);
 
+    // call statement: IDENT '(' args ')' ';' -- return value discarded
+    if (match(p, TOK_LPAREN)) {
+        Node* n = ast_new(p->arena, NODE_CALL, line);
+        n->as.call.name = name;
+        n->as.call.name_len = name_len;
+
+        PtrList args;
+        ptrlist_init(&args);
+        if (!check(p, TOK_RPAREN)) {
+            do {
+                ptrlist_push(&args, parse_expr(p));
+            } while (match(p, TOK_COMMA));
+        }
+        expect(p, TOK_RPAREN, "expected ')' after call args");
+
+        n->as.call.args = (Node**)args.items;
+        n->as.call.arg_count = args.count;
+        expect(p, TOK_SEMI, "expected ';' after call statement");
+        return n;
+    }
+
     if (match(p, TOK_LBRACKET)) {
         Node* index_expr = parse_expr(p);
         expect(p, TOK_RBRACKET, "expected ']' after array index");

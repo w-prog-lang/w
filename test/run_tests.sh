@@ -97,6 +97,37 @@ for src in "$CASES_DIR"/*.w; do
         fi
         ;;
 
+    stdout)
+        if [ $compile_status -ne 0 ]; then
+            echo "FAIL $name: expected codegen success, but wlangc failed"
+            echo "$compile_log"
+            fail=$((fail + 1))
+            continue
+        fi
+
+        if ! gcc "$out_c" -o "$out_bin" 2>"$TMPDIR/$name.gcc.log"; then
+            echo "FAIL $name: generated C failed to compile"
+            cat "$TMPDIR/$name.gcc.log"
+            fail=$((fail + 1))
+            continue
+        fi
+
+        got_stdout=$("$out_bin")
+        want_stdout=$(cat "$CASES_DIR/$name.stdout")
+
+        if [ "$got_stdout" = "$want_stdout" ]; then
+            echo "PASS $name (stdout)"
+            pass=$((pass + 1))
+        else
+            echo "FAIL $name: stdout mismatch"
+            echo "--- want ---"
+            echo "$want_stdout"
+            echo "--- got ---"
+            echo "$got_stdout"
+            fail=$((fail + 1))
+        fi
+        ;;
+
     *)
         echo "SKIP $name (unrecognized expect format: '$expect')"
         ;;

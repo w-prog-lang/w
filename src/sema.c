@@ -344,6 +344,25 @@ static TypeRef infer_expr(Sema* s, Node* n) {
         }
 
         case NODE_CALL: {
+            // "print" is a builtin, not a user-declarable function: it takes
+            // exactly one argument, of any printable type, and its result
+            // (if used) is a placeholder int64 since the language has no
+            // void type
+            if (n->as.call.name_len == 5 &&
+                strncmp(n->as.call.name, "print", 5) == 0) {
+                if (n->as.call.arg_count != 1) {
+                    fprintf(stderr,
+                            "sema error at line %d: 'print' expects 1 arg, "
+                            "got %d\n",
+                            n->line, n->as.call.arg_count);
+                    s->had_error = 1;
+                }
+                for (int i = 0; i < n->as.call.arg_count; i++) {
+                    infer_expr(s, n->as.call.args[i]);
+                }
+                return type_int64();
+            }
+
             FuncInfo* fi = lookup_func(s, n->as.call.name, n->as.call.name_len);
             if (!fi) {
                 error(s, n->line, "call to undeclared function",
@@ -511,6 +530,10 @@ static void check_stmt(Sema* s, Node* n) {
 
             break;
         }
+
+        case NODE_CALL:
+            infer_expr(s, n);
+            break;
 
         case NODE_IDENT:
             error(s, n->line, "expression statement has no effect",
