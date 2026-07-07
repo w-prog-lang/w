@@ -274,15 +274,17 @@ static void check_stmt(Sema* s, Node* n) {
 
             TypeRef decl_type;
             if (n->as.var_decl.type.name != NULL) {
-                // explicit type given; still walk init for undeclared-name
-                // checks
+                // explicit type given; check init expr's type fits within it
                 decl_type = n->as.var_decl.type;
                 if (n->as.var_decl.init) {
-                    infer_expr(s, n->as.var_decl.init);
+                    TypeRef init_type = infer_expr(s, n->as.var_decl.init);
+                    if (type_rank(init_type) > type_rank(decl_type)) {
+                        error(s, n->line,
+                              "initializer type too wide for declared type",
+                              name, len);
+                    }
                 }
             } else {
-                // ':=' form; infer type from the init expression and write
-                // it back into the AST node so codegen can use it directly
                 decl_type = infer_expr(s, n->as.var_decl.init);
                 n->as.var_decl.type = decl_type;
             }
@@ -304,7 +306,13 @@ static void check_stmt(Sema* s, Node* n) {
                 error(s, n->line, "assignment to const identifier", name, len);
             }
 
-            infer_expr(s, n->as.assign.value);
+            TypeRef value_type = infer_expr(s, n->as.assign.value);
+
+            if (sym && type_rank(value_type) > type_rank(sym->type)) {
+                error(s, n->line, "assigned value type too wide for variable",
+                      name, len);
+            }
+
             break;
         }
 
