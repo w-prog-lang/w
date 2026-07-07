@@ -84,8 +84,7 @@ static TypeRef parse_type(Parser* p) {
     return t;
 }
 
-// primary_base := IDENT | NUM | STRING | '(' expr ')'
-//               | IDENT '(' args ')' | IDENT '[' expr ']'
+// primary_base := IDENT | NUM | STRING | '(' expr ')' | IDENT '(' args ')'
 static Node* parse_primary_base(Parser* p) {
     int line = p->cur.line;
 
@@ -135,15 +134,6 @@ static Node* parse_primary_base(Parser* p) {
             return n;
         }
 
-        if (match(p, TOK_LBRACKET)) {
-            Node* n = ast_new(p->arena, NODE_INDEX, line);
-            n->as.index.name = name;
-            n->as.index.name_len = name_len;
-            n->as.index.index = parse_expr(p);
-            expect(p, TOK_RBRACKET, "expected ']' after array index");
-            return n;
-        }
-
         Node* n = ast_new(p->arena, NODE_IDENT, line);
         n->as.ident.name = name;
         n->as.ident.len = name_len;
@@ -155,23 +145,36 @@ static Node* parse_primary_base(Parser* p) {
     return ast_new(p->arena, NODE_NUM, line);
 }
 
-// primary := primary_base ('.' IDENT)*
+// primary := primary_base ('.' IDENT | '[' expr ']')*
 static Node* parse_primary(Parser* p) {
     Node* base = parse_primary_base(p);
 
-    while (check(p, TOK_DOT)) {
-        int line = p->cur.line;
-        advance(p);
+    for (;;) {
+        if (check(p, TOK_DOT)) {
+            int line = p->cur.line;
+            advance(p);
 
-        const char* field = p->cur.start;
-        int field_len = p->cur.len;
-        expect(p, TOK_IDENT, "expected field name after '.'");
+            const char* field = p->cur.start;
+            int field_len = p->cur.len;
+            expect(p, TOK_IDENT, "expected field name after '.'");
 
-        Node* n = ast_new(p->arena, NODE_FIELD, line);
-        n->as.field.base = base;
-        n->as.field.field = field;
-        n->as.field.field_len = field_len;
-        base = n;
+            Node* n = ast_new(p->arena, NODE_FIELD, line);
+            n->as.field.base = base;
+            n->as.field.field = field;
+            n->as.field.field_len = field_len;
+            base = n;
+        } else if (check(p, TOK_LBRACKET)) {
+            int line = p->cur.line;
+            advance(p);
+
+            Node* n = ast_new(p->arena, NODE_INDEX, line);
+            n->as.index.base = base;
+            n->as.index.index = parse_expr(p);
+            expect(p, TOK_RBRACKET, "expected ']' after array index");
+            base = n;
+        } else {
+            break;
+        }
     }
 
     return base;
@@ -368,38 +371,57 @@ static Node* parse_assign_or_expr(Parser* p) {
         return n;
     }
 
-    if (match(p, TOK_LBRACKET)) {
-        Node* index_expr = parse_expr(p);
-        expect(p, TOK_RBRACKET, "expected ']' after array index");
-        expect(p, TOK_ASSIGN, "expected '=' after array index");
-
-        Node* n = ast_new(p->arena, NODE_INDEX_ASSIGN, line);
-        n->as.index_assign.name = name;
-        n->as.index_assign.name_len = name_len;
-        n->as.index_assign.index = index_expr;
-        n->as.index_assign.value = parse_expr(p);
-        expect(p, TOK_SEMI, "expected ';' after assignment");
-        return n;
-    }
-
-    // field assignment only supports a single level (IDENT.field = expr);
-    // nested access like a.b.c is fine to *read* via parse_primary's '.'
-    // chain, but assigning through a chain isn't supported yet
-    if (match(p, TOK_DOT)) {
-        const char* field = p->cur.start;
-        int field_len = p->cur.len;
-        expect(p, TOK_IDENT, "expected field name after '.'");
-        expect(p, TOK_ASSIGN, "expected '=' after field access");
-
+    // build a postfix chain of '.' field / '[' index accesses on top of the
+    // leading identifier (mirrors parse_primary's chain), so e.g. p.arr[i]
+    // or arr[i].field can be assigned to -- if any accesses were consumed,
+    // the outermost one becomes the assignment target
+    if (check(p, TOK_DOT) || check(p, TOK_LBRACKET)) {
         Node* base = ast_new(p->arena, NODE_IDENT, line);
         base->as.ident.name = name;
         base->as.ident.len = name_len;
 
-        Node* n = ast_new(p->arena, NODE_FIELD_ASSIGN, line);
-        n->as.field_assign.base = base;
-        n->as.field_assign.field = field;
-        n->as.field_assign.field_len = field_len;
-        n->as.field_assign.value = parse_expr(p);
+        do {
+            if (check(p, TOK_DOT)) {
+                int fline = p->cur.line;
+                advance(p);
+
+                const char* field = p->cur.start;
+                int field_len = p->cur.len;
+                expect(p, TOK_IDENT, "expected field name after '.'");
+
+                Node* n = ast_new(p->arena, NODE_FIELD, fline);
+                n->as.field.base = base;
+                n->as.field.field = field;
+                n->as.field.field_len = field_len;
+                base = n;
+            } else {
+                int iline = p->cur.line;
+                advance(p);  // consume '['
+
+                Node* n = ast_new(p->arena, NODE_INDEX, iline);
+                n->as.index.base = base;
+                n->as.index.index = parse_expr(p);
+                expect(p, TOK_RBRACKET, "expected ']' after array index");
+                base = n;
+            }
+        } while (check(p, TOK_DOT) || check(p, TOK_LBRACKET));
+
+        if (base->kind == NODE_FIELD) {
+            expect(p, TOK_ASSIGN, "expected '=' after field access");
+            Node* n = ast_new(p->arena, NODE_FIELD_ASSIGN, line);
+            n->as.field_assign.base = base->as.field.base;
+            n->as.field_assign.field = base->as.field.field;
+            n->as.field_assign.field_len = base->as.field.field_len;
+            n->as.field_assign.value = parse_expr(p);
+            expect(p, TOK_SEMI, "expected ';' after assignment");
+            return n;
+        }
+
+        expect(p, TOK_ASSIGN, "expected '=' after array index");
+        Node* n = ast_new(p->arena, NODE_INDEX_ASSIGN, line);
+        n->as.index_assign.base = base->as.index.base;
+        n->as.index_assign.index = base->as.index.index;
+        n->as.index_assign.value = parse_expr(p);
         expect(p, TOK_SEMI, "expected ';' after assignment");
         return n;
     }

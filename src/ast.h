@@ -124,14 +124,12 @@ struct Node {
         } str;
 
         struct {
-            const char* name;
-            int name_len;
+            Node* base;
             Node* index;
         } index;
 
         struct {
-            const char* name;
-            int name_len;
+            Node* base;
             Node* index;
             Node* value;
         } index_assign;

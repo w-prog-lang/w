@@ -22,6 +22,7 @@ typedef struct {
     const char* name;
     int len;
     int param_count;
+    Param* params;  // borrowed from the func_decl AST node
     TypeRef return_type;
 } FuncInfo;
 
@@ -210,7 +211,7 @@ static Symbol* scope_lookup_local(Scope* sc, const char* name, int len) {
 }
 
 static void register_func(Sema* s, const char* name, int len, int param_count,
-                          TypeRef return_type) {
+                          Param* params, TypeRef return_type) {
     if (s->func_count == s->func_cap) {
         s->func_cap = s->func_cap == 0 ? 8 : s->func_cap * 2;
         s->funcs = realloc(s->funcs, s->func_cap * sizeof(FuncInfo));
@@ -218,6 +219,7 @@ static void register_func(Sema* s, const char* name, int len, int param_count,
     s->funcs[s->func_count].name = name;
     s->funcs[s->func_count].len = len;
     s->funcs[s->func_count].param_count = param_count;
+    s->funcs[s->func_count].params = params;
     s->funcs[s->func_count].return_type = return_type;
     s->func_count++;
 }
@@ -287,6 +289,17 @@ static TypeRef lookup_field_type(Sema* s, TypeRef base_type,
     return type_int64();
 }
 
+// walks a '.'/'[]' access chain down to the identifier that anchors it, for
+// const-checking assignment targets -- parse_assign_or_expr only ever builds
+// these chains starting from a plain identifier, so this always terminates
+// on a NODE_IDENT
+static Node* find_root_ident(Node* n) {
+    while (n->kind == NODE_FIELD || n->kind == NODE_INDEX) {
+        n = (n->kind == NODE_FIELD) ? n->as.field.base : n->as.index.base;
+    }
+    return n;
+}
+
 // evaluates an expression: performs existing checks (undeclared name/call,
 // arg count) AND returns its inferred type
 static TypeRef infer_expr(Sema* s, Node* n) {
@@ -321,20 +334,13 @@ static TypeRef infer_expr(Sema* s, Node* n) {
             return type_string();
 
         case NODE_INDEX: {
-            Symbol* sym =
-                scope_lookup(s->current, n->as.index.name, n->as.index.name_len);
-            if (!sym) {
-                error(s, n->line, "use of undeclared identifier",
-                      n->as.index.name, n->as.index.name_len);
-                infer_expr(s, n->as.index.index);
-                return type_int64();
-            }
-            if (!sym->type.is_array && !is_string_type(sym->type)) {
-                error(s, n->line, "indexing a non-array, non-string identifier",
-                      n->as.index.name, n->as.index.name_len);
+            TypeRef base_type = infer_expr(s, n->as.index.base);
+            if (!base_type.is_array && !is_string_type(base_type)) {
+                error(s, n->line, "indexing a non-array, non-string value",
+                      "[]", 2);
             }
             infer_expr(s, n->as.index.index);
-            return element_type_of(sym->type);
+            return element_type_of(base_type);
         }
 
         case NODE_FIELD: {
@@ -376,7 +382,18 @@ static TypeRef infer_expr(Sema* s, Node* n) {
                 s->had_error = 1;
             }
             for (int i = 0; i < n->as.call.arg_count; i++) {
-                infer_expr(s, n->as.call.args[i]);
+                TypeRef arg_type = infer_expr(s, n->as.call.args[i]);
+                if (!fi || i >= fi->param_count) continue;
+
+                TypeRef param_type = fi->params[i].type;
+                if (is_string_type(param_type) != is_string_type(arg_type)) {
+                    error(s, n->line, "type mismatch in call argument",
+                          n->as.call.name, n->as.call.name_len);
+                } else if (!is_string_type(param_type) &&
+                           type_rank(arg_type) > type_rank(param_type)) {
+                    error(s, n->line, "argument type too wide for parameter",
+                          n->as.call.name, n->as.call.name_len);
+                }
             }
             return fi ? fi->return_type : type_int64();
         }
@@ -463,59 +480,50 @@ static void check_stmt(Sema* s, Node* n) {
         }
 
         case NODE_INDEX_ASSIGN: {
-            const char* name = n->as.index_assign.name;
-            int len = n->as.index_assign.name_len;
+            Node* root = find_root_ident(n->as.index_assign.base);
+            Symbol* sym = scope_lookup(s->current, root->as.ident.name,
+                                       root->as.ident.len);
+            if (sym && sym->is_const) {
+                error(s, n->line, "assignment to const identifier",
+                      root->as.ident.name, root->as.ident.len);
+            }
 
-            Symbol* sym = scope_lookup(s->current, name, len);
-            if (!sym) {
-                error(s, n->line, "assignment to undeclared identifier", name,
-                      len);
-                infer_expr(s, n->as.index_assign.index);
-                infer_expr(s, n->as.index_assign.value);
-                break;
-            }
-            if (sym->is_const) {
-                error(s, n->line, "assignment to const identifier", name, len);
-            }
-            if (!sym->type.is_array && !is_string_type(sym->type)) {
-                error(s, n->line, "indexing a non-array, non-string identifier",
-                      name, len);
+            // infer_expr(base) reports its own "undeclared identifier" error
+            // if sym is NULL, so nothing further to do in that case here
+            TypeRef base_type = infer_expr(s, n->as.index_assign.base);
+            if (!base_type.is_array && !is_string_type(base_type)) {
+                error(s, n->line, "indexing a non-array, non-string value",
+                      root->as.ident.name, root->as.ident.len);
             }
 
             infer_expr(s, n->as.index_assign.index);
             TypeRef value_type = infer_expr(s, n->as.index_assign.value);
-            TypeRef elem_type = element_type_of(sym->type);
+            TypeRef elem_type = element_type_of(base_type);
 
             if (is_string_type(elem_type) != is_string_type(value_type)) {
-                error(s, n->line, "type mismatch in assignment", name, len);
+                error(s, n->line, "type mismatch in assignment",
+                      root->as.ident.name, root->as.ident.len);
             } else if (!is_string_type(elem_type) &&
                        type_rank(value_type) > type_rank(elem_type)) {
                 error(s, n->line, "assigned value type too wide for element",
-                      name, len);
+                      root->as.ident.name, root->as.ident.len);
             }
 
             break;
         }
 
         case NODE_FIELD_ASSIGN: {
-            // grammar only builds a plain identifier as the base (see
-            // parse_assign_or_expr) -- single-level field assignment only
-            const char* name = n->as.field_assign.base->as.ident.name;
-            int len = n->as.field_assign.base->as.ident.len;
-
-            Symbol* sym = scope_lookup(s->current, name, len);
-            if (!sym) {
-                error(s, n->line, "assignment to undeclared identifier", name,
-                      len);
-                infer_expr(s, n->as.field_assign.value);
-                break;
-            }
-            if (sym->is_const) {
-                error(s, n->line, "assignment to const identifier", name, len);
+            Node* root = find_root_ident(n->as.field_assign.base);
+            Symbol* sym = scope_lookup(s->current, root->as.ident.name,
+                                       root->as.ident.len);
+            if (sym && sym->is_const) {
+                error(s, n->line, "assignment to const identifier",
+                      root->as.ident.name, root->as.ident.len);
             }
 
+            TypeRef base_type = infer_expr(s, n->as.field_assign.base);
             TypeRef field_type =
-                lookup_field_type(s, sym->type, n->as.field_assign.field,
+                lookup_field_type(s, base_type, n->as.field_assign.field,
                                   n->as.field_assign.field_len, n->line);
             TypeRef value_type = infer_expr(s, n->as.field_assign.value);
 
@@ -652,7 +660,7 @@ SemaResult sema_check(Node* program) {
             continue;
         }
         register_func(&s, fn->as.func_decl.name, fn->as.func_decl.name_len,
-                      fn->as.func_decl.param_count,
+                      fn->as.func_decl.param_count, fn->as.func_decl.params,
                       fn->as.func_decl.return_type);
     }
 

@@ -104,7 +104,8 @@ static void emit_expr(FILE* out, Node* n) {
             break;
 
         case NODE_INDEX:
-            fprintf(out, "%.*s[", n->as.index.name_len, n->as.index.name);
+            emit_expr(out, n->as.index.base);
+            fprintf(out, "[");
             emit_expr(out, n->as.index.index);
             fprintf(out, "]");
             break;
@@ -220,8 +221,8 @@ static void emit_stmt(FILE* out, Node* n, int depth) {
 
         case NODE_INDEX_ASSIGN:
             emit_indent(out, depth);
-            fprintf(out, "%.*s[", n->as.index_assign.name_len,
-                    n->as.index_assign.name);
+            emit_expr(out, n->as.index_assign.base);
+            fprintf(out, "[");
             emit_expr(out, n->as.index_assign.index);
             fprintf(out, "] = ");
             emit_expr(out, n->as.index_assign.value);

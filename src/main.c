@@ -234,13 +234,14 @@ static void print_node(Node* n, int depth) {
             break;
 
         case NODE_INDEX:
-            printf("Index %.*s\n", n->as.index.name_len, n->as.index.name);
+            printf("Index\n");
+            print_node(n->as.index.base, depth + 1);
             print_node(n->as.index.index, depth + 1);
             break;
 
         case NODE_INDEX_ASSIGN:
-            printf("IndexAssign %.*s\n", n->as.index_assign.name_len,
-                   n->as.index_assign.name);
+            printf("IndexAssign\n");
+            print_node(n->as.index_assign.base, depth + 1);
             print_node(n->as.index_assign.index, depth + 1);
             print_node(n->as.index_assign.value, depth + 1);
             break;
