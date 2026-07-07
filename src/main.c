@@ -41,6 +41,8 @@ static const char* op_str(TokenKind op) {
             return "*";
         case TOK_SLASH:
             return "/";
+        case TOK_PERCENT:
+            return "%";
         case TOK_EQ:
             return "==";
         case TOK_NEQ:

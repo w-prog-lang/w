@@ -521,7 +521,13 @@ static void check_stmt(Sema* s, Node* n) {
             infer_expr(s, n->as.if_stmt.cond);
             check_block(s, n->as.if_stmt.then_block);
             if (n->as.if_stmt.else_block) {
-                check_block(s, n->as.if_stmt.else_block);
+                // else-if chains to another NODE_IF; a plain 'else' has a
+                // NODE_BLOCK, which needs its own scope via check_block
+                if (n->as.if_stmt.else_block->kind == NODE_IF) {
+                    check_stmt(s, n->as.if_stmt.else_block);
+                } else {
+                    check_block(s, n->as.if_stmt.else_block);
+                }
             }
             break;
 

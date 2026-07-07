@@ -191,10 +191,10 @@ static Node* parse_unary(Parser* p) {
     return parse_primary(p);
 }
 
-// term := unary (('*' | '/') unary)*
+// term := unary (('*' | '/' | '%') unary)*
 static Node* parse_term(Parser* p) {
     Node* left = parse_unary(p);
-    while (check(p, TOK_STAR) || check(p, TOK_SLASH)) {
+    while (check(p, TOK_STAR) || check(p, TOK_SLASH) || check(p, TOK_PERCENT)) {
         TokenKind op = p->cur.kind;
         int line = p->cur.line;
         advance(p);
@@ -423,6 +423,7 @@ static Node* parse_assign_or_expr(Parser* p) {
     return n;
 }
 
+// if_stmt := 'if' '(' expr ')' block ('else' (if_stmt | block))?
 static Node* parse_if(Parser* p) {
     int line = p->cur.line;
     advance(p);  // consume 'if'
@@ -436,7 +437,11 @@ static Node* parse_if(Parser* p) {
     n->as.if_stmt.else_block = NULL;
 
     if (match(p, TOK_KW_ELSE)) {
-        n->as.if_stmt.else_block = parse_block(p);
+        if (check(p, TOK_KW_IF)) {
+            n->as.if_stmt.else_block = parse_if(p);
+        } else {
+            n->as.if_stmt.else_block = parse_block(p);
+        }
     }
 
     return n;

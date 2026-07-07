@@ -10,7 +10,6 @@ typedef enum {
     TOK_STRING,
 
     TOK_KW_FN,
-    TOK_KW_LET,
     TOK_KW_VAR,
     TOK_KW_RETURN,
     TOK_KW_IF,
@@ -24,6 +23,7 @@ typedef enum {
     TOK_MINUS,
     TOK_STAR,
     TOK_SLASH,
+    TOK_PERCENT,       // %
     TOK_ASSIGN,        // =
     TOK_DEFINE,        // :=
     TOK_ARROW,         // <-

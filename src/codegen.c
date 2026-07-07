@@ -35,6 +35,8 @@ static const char* binop_str(TokenKind op) {
             return "*";
         case TOK_SLASH:
             return "/";
+        case TOK_PERCENT:
+            return "%";
         case TOK_EQ:
             return "==";
         case TOK_NEQ:
@@ -156,6 +158,25 @@ static void emit_block(FILE* out, Node* block, int depth) {
     fprintf(out, "}\n");
 }
 
+// emits "if (cond) { ... } [else ...]" without a leading indent, so an
+// 'else if' can chain onto the previous 'else ' with no newline between them
+static void emit_if_chain(FILE* out, Node* n, int depth) {
+    fprintf(out, "if (");
+    emit_expr(out, n->as.if_stmt.cond);
+    fprintf(out, ")\n");
+    emit_block(out, n->as.if_stmt.then_block, depth);
+    if (n->as.if_stmt.else_block) {
+        emit_indent(out, depth);
+        if (n->as.if_stmt.else_block->kind == NODE_IF) {
+            fprintf(out, "else ");
+            emit_if_chain(out, n->as.if_stmt.else_block, depth);
+        } else {
+            fprintf(out, "else\n");
+            emit_block(out, n->as.if_stmt.else_block, depth);
+        }
+    }
+}
+
 static void emit_stmt(FILE* out, Node* n, int depth) {
     switch (n->kind) {
         case NODE_VAR_DECL: {
@@ -210,15 +231,7 @@ static void emit_stmt(FILE* out, Node* n, int depth) {
 
         case NODE_IF:
             emit_indent(out, depth);
-            fprintf(out, "if (");
-            emit_expr(out, n->as.if_stmt.cond);
-            fprintf(out, ")\n");
-            emit_block(out, n->as.if_stmt.then_block, depth);
-            if (n->as.if_stmt.else_block) {
-                emit_indent(out, depth);
-                fprintf(out, "else\n");
-                emit_block(out, n->as.if_stmt.else_block, depth);
-            }
+            emit_if_chain(out, n, depth);
             break;
 
         case NODE_LOOP: {

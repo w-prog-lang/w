@@ -83,7 +83,7 @@ struct Node {
         struct {
             Node* cond;
             Node* then_block;
-            Node* else_block;
+            Node* else_block;  // NULL, a NODE_BLOCK, or a NODE_IF (else-if)
         } if_stmt;
 
         struct {
