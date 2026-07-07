@@ -99,6 +99,11 @@ static void emit_expr(FILE* out, Node* n) {
             fprintf(out, "]");
             break;
 
+        case NODE_FIELD:
+            emit_expr(out, n->as.field.base);
+            fprintf(out, ".%.*s", n->as.field.field_len, n->as.field.field);
+            break;
+
         default:
             fprintf(out, "/* unsupported expr node: %s */",
                     node_kind_name(n->kind));
@@ -194,6 +199,15 @@ static void emit_stmt(FILE* out, Node* n, int depth) {
             fprintf(out, ";\n");
             break;
 
+        case NODE_FIELD_ASSIGN:
+            emit_indent(out, depth);
+            emit_expr(out, n->as.field_assign.base);
+            fprintf(out, ".%.*s = ", n->as.field_assign.field_len,
+                    n->as.field_assign.field);
+            emit_expr(out, n->as.field_assign.value);
+            fprintf(out, ";\n");
+            break;
+
         case NODE_IF:
             emit_indent(out, depth);
             fprintf(out, "if (");
@@ -270,6 +284,20 @@ static void emit_stmt(FILE* out, Node* n, int depth) {
     }
 }
 
+static void emit_struct(FILE* out, Node* sd) {
+    fprintf(out, "typedef struct {\n");
+    for (int i = 0; i < sd->as.struct_decl.field_count; i++) {
+        Param* f = &sd->as.struct_decl.fields[i];
+        fprintf(out, "    ");
+        emit_c_type(out, f->type);
+        fprintf(out, " %.*s", f->name_len, f->name);
+        if (f->type.is_array) fprintf(out, "[%d]", f->type.array_len);
+        fprintf(out, ";\n");
+    }
+    fprintf(out, "} %.*s;\n\n", sd->as.struct_decl.name_len,
+            sd->as.struct_decl.name);
+}
+
 static void emit_func(FILE* out, Node* fn) {
     emit_c_type(out, fn->as.func_decl.return_type);
     fprintf(out, " %.*s(", fn->as.func_decl.name_len, fn->as.func_decl.name);
@@ -291,6 +319,10 @@ static void emit_func(FILE* out, Node* fn) {
 
 void codegen_emit(Node* program, FILE* out) {
     fprintf(out, "#include <stdint.h>\n\n");
+
+    for (int i = 0; i < program->as.program.structs.count; i++) {
+        emit_struct(out, (Node*)program->as.program.structs.items[i]);
+    }
 
     for (int i = 0; i < program->as.program.funcs.count; i++) {
         emit_func(out, (Node*)program->as.program.funcs.items[i]);

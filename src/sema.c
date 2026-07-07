@@ -26,10 +26,20 @@ typedef struct {
 } FuncInfo;
 
 typedef struct {
+    const char* name;
+    int len;
+    Param* fields;
+    int field_count;
+} StructInfo;
+
+typedef struct {
     Scope* current;
     FuncInfo* funcs;
     int func_count;
     int func_cap;
+    StructInfo* structs;
+    int struct_count;
+    int struct_cap;
     int loop_depth;
     int had_error;
 } Sema;
@@ -222,6 +232,61 @@ static FuncInfo* lookup_func(Sema* s, const char* name, int len) {
     return NULL;
 }
 
+static void register_struct(Sema* s, const char* name, int len, Param* fields,
+                            int field_count) {
+    if (s->struct_count == s->struct_cap) {
+        s->struct_cap = s->struct_cap == 0 ? 8 : s->struct_cap * 2;
+        s->structs = realloc(s->structs, s->struct_cap * sizeof(StructInfo));
+    }
+    s->structs[s->struct_count].name = name;
+    s->structs[s->struct_count].len = len;
+    s->structs[s->struct_count].fields = fields;
+    s->structs[s->struct_count].field_count = field_count;
+    s->struct_count++;
+}
+
+static StructInfo* lookup_struct(Sema* s, const char* name, int len) {
+    if (!name) return NULL;
+    for (int i = 0; i < s->struct_count; i++) {
+        if (s->structs[i].len == len &&
+            strncmp(s->structs[i].name, name, len) == 0) {
+            return &s->structs[i];
+        }
+    }
+    return NULL;
+}
+
+// is `t` a builtin scalar type, "string", or a declared struct name?
+static int is_known_type_name(Sema* s, TypeRef t) {
+    if (t.name == NULL) return 1;  // inferred; nothing to validate
+    if (t.len == 4 && strncmp(t.name, "int8", 4) == 0) return 1;
+    if (t.len == 5 && strncmp(t.name, "int16", 5) == 0) return 1;
+    if (t.len == 5 && strncmp(t.name, "int32", 5) == 0) return 1;
+    if (t.len == 5 && strncmp(t.name, "int64", 5) == 0) return 1;
+    if (t.len == 6 && strncmp(t.name, "int128", 6) == 0) return 1;
+    if (is_string_type(t)) return 1;
+    return lookup_struct(s, t.name, t.len) != NULL;
+}
+
+// resolves the type of `field` on a value of type `base_type`, reporting
+// sema errors for a non-struct base or an unknown field
+static TypeRef lookup_field_type(Sema* s, TypeRef base_type,
+                                 const char* field, int field_len, int line) {
+    StructInfo* si = lookup_struct(s, base_type.name, base_type.len);
+    if (!si) {
+        error(s, line, "field access on non-struct type", field, field_len);
+        return type_int64();
+    }
+    for (int i = 0; i < si->field_count; i++) {
+        if (si->fields[i].name_len == field_len &&
+            strncmp(si->fields[i].name, field, field_len) == 0) {
+            return si->fields[i].type;
+        }
+    }
+    error(s, line, "no such field", field, field_len);
+    return type_int64();
+}
+
 // evaluates an expression: performs existing checks (undeclared name/call,
 // arg count) AND returns its inferred type
 static TypeRef infer_expr(Sema* s, Node* n) {
@@ -270,6 +335,12 @@ static TypeRef infer_expr(Sema* s, Node* n) {
             }
             infer_expr(s, n->as.index.index);
             return element_type_of(sym->type);
+        }
+
+        case NODE_FIELD: {
+            TypeRef base_type = infer_expr(s, n->as.field.base);
+            return lookup_field_type(s, base_type, n->as.field.field,
+                                     n->as.field.field_len, n->line);
         }
 
         case NODE_CALL: {
@@ -321,6 +392,9 @@ static void check_stmt(Sema* s, Node* n) {
             if (n->as.var_decl.type.name != NULL) {
                 // explicit type given; check init expr's type fits within it
                 decl_type = n->as.var_decl.type;
+                if (!is_known_type_name(s, decl_type)) {
+                    error(s, n->line, "unknown type name", name, len);
+                }
                 if (n->as.var_decl.init) {
                     TypeRef init_type = infer_expr(s, n->as.var_decl.init);
                     if (is_string_type(decl_type) != is_string_type(init_type)) {
@@ -399,6 +473,40 @@ static void check_stmt(Sema* s, Node* n) {
                        type_rank(value_type) > type_rank(elem_type)) {
                 error(s, n->line, "assigned value type too wide for element",
                       name, len);
+            }
+
+            break;
+        }
+
+        case NODE_FIELD_ASSIGN: {
+            // grammar only builds a plain identifier as the base (see
+            // parse_assign_or_expr) -- single-level field assignment only
+            const char* name = n->as.field_assign.base->as.ident.name;
+            int len = n->as.field_assign.base->as.ident.len;
+
+            Symbol* sym = scope_lookup(s->current, name, len);
+            if (!sym) {
+                error(s, n->line, "assignment to undeclared identifier", name,
+                      len);
+                infer_expr(s, n->as.field_assign.value);
+                break;
+            }
+            if (sym->is_const) {
+                error(s, n->line, "assignment to const identifier", name, len);
+            }
+
+            TypeRef field_type =
+                lookup_field_type(s, sym->type, n->as.field_assign.field,
+                                  n->as.field_assign.field_len, n->line);
+            TypeRef value_type = infer_expr(s, n->as.field_assign.value);
+
+            if (is_string_type(field_type) != is_string_type(value_type)) {
+                error(s, n->line, "type mismatch in assignment",
+                      n->as.field_assign.field, n->as.field_assign.field_len);
+            } else if (!is_string_type(field_type) &&
+                       type_rank(value_type) > type_rank(field_type)) {
+                error(s, n->line, "assigned value type too wide for field",
+                      n->as.field_assign.field, n->as.field_assign.field_len);
             }
 
             break;
@@ -489,8 +597,23 @@ SemaResult sema_check(Node* program) {
     s.funcs = NULL;
     s.func_count = 0;
     s.func_cap = 0;
+    s.structs = NULL;
+    s.struct_count = 0;
+    s.struct_cap = 0;
     s.loop_depth = 0;
     s.had_error = 0;
+
+    for (int i = 0; i < program->as.program.structs.count; i++) {
+        Node* sd = (Node*)program->as.program.structs.items[i];
+        if (lookup_struct(&s, sd->as.struct_decl.name,
+                          sd->as.struct_decl.name_len)) {
+            error(&s, sd->line, "redefinition of struct",
+                  sd->as.struct_decl.name, sd->as.struct_decl.name_len);
+            continue;
+        }
+        register_struct(&s, sd->as.struct_decl.name, sd->as.struct_decl.name_len,
+                        sd->as.struct_decl.fields, sd->as.struct_decl.field_count);
+    }
 
     for (int i = 0; i < program->as.program.funcs.count; i++) {
         Node* fn = (Node*)program->as.program.funcs.items[i];
@@ -509,6 +632,7 @@ SemaResult sema_check(Node* program) {
     }
 
     free(s.funcs);
+    free(s.structs);
 
     SemaResult result;
     result.had_error = s.had_error;

@@ -2,7 +2,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 static void advance(Parser* p) {
     p->prev = p->cur;
@@ -42,22 +41,6 @@ static Node* parse_expr(Parser* p);
 static Node* parse_block(Parser* p);
 static Node* parse_stmt(Parser* p);
 
-static int is_valid_type_name(const char* name, int len) {
-    static const struct {
-        const char* n;
-        int l;
-    } valid[] = {
-        {"int8", 4},   {"int16", 5}, {"int32", 5},
-        {"int64", 5},  {"int128", 6}, {"string", 6},
-    };
-    for (size_t i = 0; i < sizeof(valid) / sizeof(valid[0]); i++) {
-        if (valid[i].l == len && strncmp(valid[i].n, name, len) == 0) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
 static int parse_uint_literal(const char* text, int len) {
     int value = 0;
     for (int i = 0; i < len; i++) {
@@ -80,12 +63,10 @@ static TypeRef parse_type(Parser* p) {
         return t;
     }
 
+    // type name validity (builtin scalar, "string", or a declared struct) is
+    // checked in sema, not here -- structs may be declared later in the file
     t.name = p->cur.start;
     t.len = p->cur.len;
-
-    if (!is_valid_type_name(t.name, t.len)) {
-        error_at(p, p->cur, "unknown type name");
-    }
 
     advance(p);
 
@@ -103,9 +84,9 @@ static TypeRef parse_type(Parser* p) {
     return t;
 }
 
-// primary := IDENT | NUM | STRING | '(' expr ')'
-//          | IDENT '(' args ')' | IDENT '[' expr ']'
-static Node* parse_primary(Parser* p) {
+// primary_base := IDENT | NUM | STRING | '(' expr ')'
+//               | IDENT '(' args ')' | IDENT '[' expr ']'
+static Node* parse_primary_base(Parser* p) {
     int line = p->cur.line;
 
     if (match(p, TOK_LPAREN)) {
@@ -172,6 +153,28 @@ static Node* parse_primary(Parser* p) {
     error_at(p, p->cur, "expected expression");
     advance(p);
     return ast_new(p->arena, NODE_NUM, line);
+}
+
+// primary := primary_base ('.' IDENT)*
+static Node* parse_primary(Parser* p) {
+    Node* base = parse_primary_base(p);
+
+    while (check(p, TOK_DOT)) {
+        int line = p->cur.line;
+        advance(p);
+
+        const char* field = p->cur.start;
+        int field_len = p->cur.len;
+        expect(p, TOK_IDENT, "expected field name after '.'");
+
+        Node* n = ast_new(p->arena, NODE_FIELD, line);
+        n->as.field.base = base;
+        n->as.field.field = field;
+        n->as.field.field_len = field_len;
+        base = n;
+    }
+
+    return base;
 }
 
 // unary := ('!' | '-') unary | primary
@@ -354,6 +357,28 @@ static Node* parse_assign_or_expr(Parser* p) {
         n->as.index_assign.name_len = name_len;
         n->as.index_assign.index = index_expr;
         n->as.index_assign.value = parse_expr(p);
+        expect(p, TOK_SEMI, "expected ';' after assignment");
+        return n;
+    }
+
+    // field assignment only supports a single level (IDENT.field = expr);
+    // nested access like a.b.c is fine to *read* via parse_primary's '.'
+    // chain, but assigning through a chain isn't supported yet
+    if (match(p, TOK_DOT)) {
+        const char* field = p->cur.start;
+        int field_len = p->cur.len;
+        expect(p, TOK_IDENT, "expected field name after '.'");
+        expect(p, TOK_ASSIGN, "expected '=' after field access");
+
+        Node* base = ast_new(p->arena, NODE_IDENT, line);
+        base->as.ident.name = name;
+        base->as.ident.len = name_len;
+
+        Node* n = ast_new(p->arena, NODE_FIELD_ASSIGN, line);
+        n->as.field_assign.base = base;
+        n->as.field_assign.field = field;
+        n->as.field_assign.field_len = field_len;
+        n->as.field_assign.value = parse_expr(p);
         expect(p, TOK_SEMI, "expected ';' after assignment");
         return n;
     }
@@ -685,15 +710,60 @@ static Node* parse_func_decl(Parser* p) {
     return n;
 }
 
+// struct_decl := 'struct' IDENT '{' (IDENT ':' type (',' IDENT ':' type)*)? '}'
+static Node* parse_struct_decl(Parser* p) {
+    int line = p->cur.line;
+    advance(p);  // consume 'struct'
+
+    const char* name = p->cur.start;
+    int name_len = p->cur.len;
+    expect(p, TOK_IDENT, "expected struct name");
+    expect(p, TOK_LBRACE, "expected '{' after struct name");
+
+    PtrList fields;
+    ptrlist_init(&fields);
+
+    if (!check(p, TOK_RBRACE)) {
+        do {
+            Param* field = arena_alloc(p->arena, sizeof(Param));
+            field->name = p->cur.start;
+            field->name_len = p->cur.len;
+            expect(p, TOK_IDENT, "expected field name");
+            expect(p, TOK_COLON, "expected ':' after field name");
+            field->type = parse_type(p);
+            ptrlist_push(&fields, field);
+        } while (match(p, TOK_COMMA));
+    }
+    expect(p, TOK_RBRACE, "expected '}' after struct fields");
+
+    Node* n = ast_new(p->arena, NODE_STRUCT_DECL, line);
+    n->as.struct_decl.name = name;
+    n->as.struct_decl.name_len = name_len;
+
+    // flatten PtrList<Param*> into a contiguous Param array
+    Param* field_arr = arena_alloc(
+        p->arena, sizeof(Param) * (fields.count > 0 ? fields.count : 1));
+    for (int i = 0; i < fields.count; i++) {
+        field_arr[i] = *(Param*)fields.items[i];
+    }
+    n->as.struct_decl.fields = field_arr;
+    n->as.struct_decl.field_count = fields.count;
+
+    return n;
+}
+
 Node* parser_parse_program(Parser* p) {
     Node* n = ast_new(p->arena, NODE_PROGRAM, p->cur.line);
     ptrlist_init(&n->as.program.funcs);
+    ptrlist_init(&n->as.program.structs);
 
     while (!check(p, TOK_EOF)) {
         if (check(p, TOK_KW_FN)) {
             ptrlist_push(&n->as.program.funcs, parse_func_decl(p));
+        } else if (check(p, TOK_KW_STRUCT)) {
+            ptrlist_push(&n->as.program.structs, parse_struct_decl(p));
         } else {
-            error_at(p, p->cur, "expected 'fn'");
+            error_at(p, p->cur, "expected 'fn' or 'struct'");
             advance(p);
         }
     }

@@ -85,8 +85,23 @@ static void print_node(Node* n, int depth) {
     switch (n->kind) {
         case NODE_PROGRAM:
             printf("Program\n");
+            for (int i = 0; i < n->as.program.structs.count; i++) {
+                print_node((Node*)n->as.program.structs.items[i], depth + 1);
+            }
             for (int i = 0; i < n->as.program.funcs.count; i++) {
                 print_node((Node*)n->as.program.funcs.items[i], depth + 1);
+            }
+            break;
+
+        case NODE_STRUCT_DECL:
+            printf("StructDecl %.*s\n", n->as.struct_decl.name_len,
+                   n->as.struct_decl.name);
+            for (int i = 0; i < n->as.struct_decl.field_count; i++) {
+                Param* field = &n->as.struct_decl.fields[i];
+                indent(depth + 1);
+                printf("%.*s: ", field->name_len, field->name);
+                print_type(field->type);
+                printf("\n");
             }
             break;
 
@@ -226,6 +241,18 @@ static void print_node(Node* n, int depth) {
                    n->as.index_assign.name);
             print_node(n->as.index_assign.index, depth + 1);
             print_node(n->as.index_assign.value, depth + 1);
+            break;
+
+        case NODE_FIELD:
+            printf("Field %.*s\n", n->as.field.field_len, n->as.field.field);
+            print_node(n->as.field.base, depth + 1);
+            break;
+
+        case NODE_FIELD_ASSIGN:
+            printf("FieldAssign %.*s\n", n->as.field_assign.field_len,
+                   n->as.field_assign.field);
+            print_node(n->as.field_assign.base, depth + 1);
+            print_node(n->as.field_assign.value, depth + 1);
             break;
 
         default:

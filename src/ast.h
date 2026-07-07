@@ -28,6 +28,9 @@ typedef enum {
     NODE_STRING,
     NODE_INDEX,
     NODE_INDEX_ASSIGN,
+    NODE_STRUCT_DECL,
+    NODE_FIELD,
+    NODE_FIELD_ASSIGN,
     NODE_BREAK,
     NODE_CONTINUE,
 } NodeKind;
@@ -47,6 +50,7 @@ struct Node {
     union {
         struct {
             PtrList funcs;
+            PtrList structs;
         } program;
 
         struct {
@@ -131,6 +135,26 @@ struct Node {
             Node* index;
             Node* value;
         } index_assign;
+
+        struct {
+            const char* name;
+            int name_len;
+            Param* fields;
+            int field_count;
+        } struct_decl;
+
+        struct {
+            Node* base;
+            const char* field;
+            int field_len;
+        } field;
+
+        struct {
+            Node* base;
+            const char* field;
+            int field_len;
+            Node* value;
+        } field_assign;
 
         struct {
             Node* init;  // NULL if no init clause
