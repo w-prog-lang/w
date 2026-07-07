@@ -45,6 +45,10 @@ static const char* binop_str(TokenKind op) {
             return "<=";
         case TOK_GE:
             return ">=";
+        case TOK_AND_AND:
+            return "&&";
+        case TOK_OR_OR:
+            return "||";
         default:
             return "?";
     }
@@ -65,6 +69,12 @@ static void emit_expr(FILE* out, Node* n) {
             emit_expr(out, n->as.binop.left);
             fprintf(out, " %s ", binop_str(n->as.binop.op));
             emit_expr(out, n->as.binop.right);
+            fprintf(out, ")");
+            break;
+
+        case NODE_UNARY:
+            fprintf(out, "(%s", n->as.unary.op == TOK_BANG ? "!" : "-");
+            emit_expr(out, n->as.unary.operand);
             fprintf(out, ")");
             break;
 

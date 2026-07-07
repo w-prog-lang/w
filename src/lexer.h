@@ -37,6 +37,9 @@ typedef enum {
     TOK_GT,
     TOK_LE,
     TOK_GE,
+    TOK_BANG,      // !
+    TOK_AND_AND,   // &&
+    TOK_OR_OR,     // ||
 
     TOK_LPAREN,
     TOK_RPAREN,

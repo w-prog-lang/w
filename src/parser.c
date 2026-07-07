@@ -130,14 +130,28 @@ static Node* parse_primary(Parser* p) {
     return ast_new(p->arena, NODE_NUM, line);
 }
 
-// term := primary (('*' | '/') primary)*
+// unary := ('!' | '-') unary | primary
+static Node* parse_unary(Parser* p) {
+    if (check(p, TOK_BANG) || check(p, TOK_MINUS)) {
+        TokenKind op = p->cur.kind;
+        int line = p->cur.line;
+        advance(p);
+        Node* n = ast_new(p->arena, NODE_UNARY, line);
+        n->as.unary.op = op;
+        n->as.unary.operand = parse_unary(p);
+        return n;
+    }
+    return parse_primary(p);
+}
+
+// term := unary (('*' | '/') unary)*
 static Node* parse_term(Parser* p) {
-    Node* left = parse_primary(p);
+    Node* left = parse_unary(p);
     while (check(p, TOK_STAR) || check(p, TOK_SLASH)) {
         TokenKind op = p->cur.kind;
         int line = p->cur.line;
         advance(p);
-        Node* right = parse_primary(p);
+        Node* right = parse_unary(p);
         Node* n = ast_new(p->arena, NODE_BINOP, line);
         n->as.binop.op = op;
         n->as.binop.left = left;
@@ -182,7 +196,39 @@ static Node* parse_comparison(Parser* p) {
     return left;
 }
 
-static Node* parse_expr(Parser* p) { return parse_comparison(p); }
+// logical_and := comparison ('&&' comparison)*
+static Node* parse_logical_and(Parser* p) {
+    Node* left = parse_comparison(p);
+    while (check(p, TOK_AND_AND)) {
+        int line = p->cur.line;
+        advance(p);
+        Node* right = parse_comparison(p);
+        Node* n = ast_new(p->arena, NODE_BINOP, line);
+        n->as.binop.op = TOK_AND_AND;
+        n->as.binop.left = left;
+        n->as.binop.right = right;
+        left = n;
+    }
+    return left;
+}
+
+// logical_or := logical_and ('||' logical_and)*
+static Node* parse_logical_or(Parser* p) {
+    Node* left = parse_logical_and(p);
+    while (check(p, TOK_OR_OR)) {
+        int line = p->cur.line;
+        advance(p);
+        Node* right = parse_logical_and(p);
+        Node* n = ast_new(p->arena, NODE_BINOP, line);
+        n->as.binop.op = TOK_OR_OR;
+        n->as.binop.left = left;
+        n->as.binop.right = right;
+        left = n;
+    }
+    return left;
+}
+
+static Node* parse_expr(Parser* p) { return parse_logical_or(p); }
 
 // stmt := var_decl | assign_or_expr | if_stmt | return_stmt
 //

@@ -19,6 +19,7 @@ typedef enum {
     NODE_LOOP,
     NODE_RETURN,
     NODE_BINOP,
+    NODE_UNARY,
     NODE_CALL,
     NODE_IDENT,
     NODE_NUM,
@@ -85,6 +86,11 @@ struct Node {
             Node* left;
             Node* right;
         } binop;
+
+        struct {
+            TokenKind op;  // TOK_BANG or TOK_MINUS
+            Node* operand;
+        } unary;
 
         struct {
             const char* name;

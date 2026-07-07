@@ -228,6 +228,9 @@ static TypeRef infer_expr(Sema* s, Node* n) {
             return widen(lt, rt);
         }
 
+        case NODE_UNARY:
+            return infer_expr(s, n->as.unary.operand);
+
         case NODE_CALL: {
             FuncInfo* fi = lookup_func(s, n->as.call.name, n->as.call.name_len);
             if (!fi) {

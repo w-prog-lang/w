@@ -53,6 +53,12 @@ static const char* op_str(TokenKind op) {
             return "<=";
         case TOK_GE:
             return ">=";
+        case TOK_BANG:
+            return "!";
+        case TOK_AND_AND:
+            return "&&";
+        case TOK_OR_OR:
+            return "||";
         default:
             return "?";
     }
@@ -183,6 +189,11 @@ static void print_node(Node* n, int depth) {
             printf("BinOp %s\n", op_str(n->as.binop.op));
             print_node(n->as.binop.left, depth + 1);
             print_node(n->as.binop.right, depth + 1);
+            break;
+
+        case NODE_UNARY:
+            printf("Unary %s\n", op_str(n->as.unary.op));
+            print_node(n->as.unary.operand, depth + 1);
             break;
 
         case NODE_CALL:
