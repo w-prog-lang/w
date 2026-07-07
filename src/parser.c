@@ -42,6 +42,21 @@ static Node* parse_expr(Parser* p);
 static Node* parse_block(Parser* p);
 static Node* parse_stmt(Parser* p);
 
+static int is_valid_type_name(const char* name, int len) {
+    static const struct {
+        const char* n;
+        int l;
+    } valid[] = {
+        {"int8", 4}, {"int16", 5}, {"int32", 5}, {"int64", 5}, {"int128", 6},
+    };
+    for (size_t i = 0; i < sizeof(valid) / sizeof(valid[0]); i++) {
+        if (valid[i].l == len && strncmp(valid[i].n, name, len) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static TypeRef parse_type(Parser* p) {
     TypeRef t;
     if (!check(p, TOK_IDENT)) {
@@ -50,8 +65,14 @@ static TypeRef parse_type(Parser* p) {
         t.len = 0;
         return t;
     }
+
     t.name = p->cur.start;
     t.len = p->cur.len;
+
+    if (!is_valid_type_name(t.name, t.len)) {
+        error_at(p, p->cur, "unknown type name");
+    }
+
     advance(p);
     return t;
 }
