@@ -69,6 +69,7 @@ static void print_type(TypeRef t) {
         printf("<inferred>");
     } else {
         printf("%.*s", t.len, t.name);
+        if (t.is_array) printf("[%d]", t.array_len);
     }
 }
 
@@ -209,6 +210,22 @@ static void print_node(Node* n, int depth) {
 
         case NODE_NUM:
             printf("Num %.*s\n", n->as.num.len, n->as.num.text);
+            break;
+
+        case NODE_STRING:
+            printf("String \"%.*s\"\n", n->as.str.len, n->as.str.text);
+            break;
+
+        case NODE_INDEX:
+            printf("Index %.*s\n", n->as.index.name_len, n->as.index.name);
+            print_node(n->as.index.index, depth + 1);
+            break;
+
+        case NODE_INDEX_ASSIGN:
+            printf("IndexAssign %.*s\n", n->as.index_assign.name_len,
+                   n->as.index_assign.name);
+            print_node(n->as.index_assign.index, depth + 1);
+            print_node(n->as.index_assign.value, depth + 1);
             break;
 
         default:

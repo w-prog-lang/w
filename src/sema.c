@@ -40,26 +40,47 @@ static const char TY_INT16[] = "int16";
 static const char TY_INT32[] = "int32";
 static const char TY_INT64[] = "int64";
 static const char TY_INT128[] = "int128";
+static const char TY_STRING[] = "string";
 
 static TypeRef type_int8(void) {
-    TypeRef t = {TY_INT8, 4};
+    TypeRef t = {TY_INT8, 4, 0, 0};
     return t;
 }
 static TypeRef type_int16(void) {
-    TypeRef t = {TY_INT16, 5};
+    TypeRef t = {TY_INT16, 5, 0, 0};
     return t;
 }
 static TypeRef type_int32(void) {
-    TypeRef t = {TY_INT32, 5};
+    TypeRef t = {TY_INT32, 5, 0, 0};
     return t;
 }
 static TypeRef type_int64(void) {
-    TypeRef t = {TY_INT64, 5};
+    TypeRef t = {TY_INT64, 5, 0, 0};
     return t;
 }
 static TypeRef type_int128(void) {
-    TypeRef t = {TY_INT128, 6};
+    TypeRef t = {TY_INT128, 6, 0, 0};
     return t;
+}
+static TypeRef type_string(void) {
+    TypeRef t = {TY_STRING, 6, 0, 0};
+    return t;
+}
+
+static int is_string_type(TypeRef t) {
+    return t.name != NULL && t.len == 6 && strncmp(t.name, "string", 6) == 0;
+}
+
+// type yielded by indexing a symbol of type `t` with '[' expr ']'
+static TypeRef element_type_of(TypeRef t) {
+    if (t.is_array) {
+        TypeRef elem = t;
+        elem.is_array = 0;
+        elem.array_len = 0;
+        return elem;
+    }
+    if (is_string_type(t)) return type_int8();  // string indexing yields a byte
+    return type_int64();
 }
 
 static int type_rank(TypeRef t) {
@@ -231,6 +252,26 @@ static TypeRef infer_expr(Sema* s, Node* n) {
         case NODE_UNARY:
             return infer_expr(s, n->as.unary.operand);
 
+        case NODE_STRING:
+            return type_string();
+
+        case NODE_INDEX: {
+            Symbol* sym =
+                scope_lookup(s->current, n->as.index.name, n->as.index.name_len);
+            if (!sym) {
+                error(s, n->line, "use of undeclared identifier",
+                      n->as.index.name, n->as.index.name_len);
+                infer_expr(s, n->as.index.index);
+                return type_int64();
+            }
+            if (!sym->type.is_array && !is_string_type(sym->type)) {
+                error(s, n->line, "indexing a non-array, non-string identifier",
+                      n->as.index.name, n->as.index.name_len);
+            }
+            infer_expr(s, n->as.index.index);
+            return element_type_of(sym->type);
+        }
+
         case NODE_CALL: {
             FuncInfo* fi = lookup_func(s, n->as.call.name, n->as.call.name_len);
             if (!fi) {
@@ -282,7 +323,13 @@ static void check_stmt(Sema* s, Node* n) {
                 decl_type = n->as.var_decl.type;
                 if (n->as.var_decl.init) {
                     TypeRef init_type = infer_expr(s, n->as.var_decl.init);
-                    if (type_rank(init_type) > type_rank(decl_type)) {
+                    if (is_string_type(decl_type) != is_string_type(init_type)) {
+                        error(s, n->line,
+                              "type mismatch between declared type and "
+                              "initializer",
+                              name, len);
+                    } else if (!is_string_type(decl_type) &&
+                               type_rank(init_type) > type_rank(decl_type)) {
                         error(s, n->line,
                               "initializer type too wide for declared type",
                               name, len);
@@ -312,8 +359,45 @@ static void check_stmt(Sema* s, Node* n) {
 
             TypeRef value_type = infer_expr(s, n->as.assign.value);
 
-            if (sym && type_rank(value_type) > type_rank(sym->type)) {
+            if (sym && is_string_type(sym->type) != is_string_type(value_type)) {
+                error(s, n->line, "type mismatch in assignment", name, len);
+            } else if (sym && type_rank(value_type) > type_rank(sym->type)) {
                 error(s, n->line, "assigned value type too wide for variable",
+                      name, len);
+            }
+
+            break;
+        }
+
+        case NODE_INDEX_ASSIGN: {
+            const char* name = n->as.index_assign.name;
+            int len = n->as.index_assign.name_len;
+
+            Symbol* sym = scope_lookup(s->current, name, len);
+            if (!sym) {
+                error(s, n->line, "assignment to undeclared identifier", name,
+                      len);
+                infer_expr(s, n->as.index_assign.index);
+                infer_expr(s, n->as.index_assign.value);
+                break;
+            }
+            if (sym->is_const) {
+                error(s, n->line, "assignment to const identifier", name, len);
+            }
+            if (!sym->type.is_array && !is_string_type(sym->type)) {
+                error(s, n->line, "indexing a non-array, non-string identifier",
+                      name, len);
+            }
+
+            infer_expr(s, n->as.index_assign.index);
+            TypeRef value_type = infer_expr(s, n->as.index_assign.value);
+            TypeRef elem_type = element_type_of(sym->type);
+
+            if (is_string_type(elem_type) != is_string_type(value_type)) {
+                error(s, n->line, "type mismatch in assignment", name, len);
+            } else if (!is_string_type(elem_type) &&
+                       type_rank(value_type) > type_rank(elem_type)) {
+                error(s, n->line, "assigned value type too wide for element",
                       name, len);
             }
 

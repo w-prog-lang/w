@@ -47,7 +47,8 @@ static int is_valid_type_name(const char* name, int len) {
         const char* n;
         int l;
     } valid[] = {
-        {"int8", 4}, {"int16", 5}, {"int32", 5}, {"int64", 5}, {"int128", 6},
+        {"int8", 4},   {"int16", 5}, {"int32", 5},
+        {"int64", 5},  {"int128", 6}, {"string", 6},
     };
     for (size_t i = 0; i < sizeof(valid) / sizeof(valid[0]); i++) {
         if (valid[i].l == len && strncmp(valid[i].n, name, len) == 0) {
@@ -57,8 +58,21 @@ static int is_valid_type_name(const char* name, int len) {
     return 0;
 }
 
+static int parse_uint_literal(const char* text, int len) {
+    int value = 0;
+    for (int i = 0; i < len; i++) {
+        if (text[i] < '0' || text[i] > '9') break;
+        value = value * 10 + (text[i] - '0');
+    }
+    return value;
+}
+
+// type := IDENT [ '[' NUM ']' ]
 static TypeRef parse_type(Parser* p) {
     TypeRef t;
+    t.is_array = 0;
+    t.array_len = 0;
+
     if (!check(p, TOK_IDENT)) {
         error_at(p, p->cur, "expected type name");
         t.name = NULL;
@@ -74,10 +88,23 @@ static TypeRef parse_type(Parser* p) {
     }
 
     advance(p);
+
+    if (match(p, TOK_LBRACKET)) {
+        if (!check(p, TOK_NUM)) {
+            error_at(p, p->cur, "expected array size");
+        } else {
+            t.array_len = parse_uint_literal(p->cur.start, p->cur.len);
+            advance(p);
+        }
+        expect(p, TOK_RBRACKET, "expected ']' after array size");
+        t.is_array = 1;
+    }
+
     return t;
 }
 
-// primary := IDENT | NUM | '(' expr ')' | IDENT '(' args ')'
+// primary := IDENT | NUM | STRING | '(' expr ')'
+//          | IDENT '(' args ')' | IDENT '[' expr ']'
 static Node* parse_primary(Parser* p) {
     int line = p->cur.line;
 
@@ -91,6 +118,14 @@ static Node* parse_primary(Parser* p) {
         Node* n = ast_new(p->arena, NODE_NUM, line);
         n->as.num.text = p->cur.start;
         n->as.num.len = p->cur.len;
+        advance(p);
+        return n;
+    }
+
+    if (check(p, TOK_STRING)) {
+        Node* n = ast_new(p->arena, NODE_STRING, line);
+        n->as.str.text = p->cur.start;
+        n->as.str.len = p->cur.len;
         advance(p);
         return n;
     }
@@ -116,6 +151,15 @@ static Node* parse_primary(Parser* p) {
 
             n->as.call.args = (Node**)args.items;
             n->as.call.arg_count = args.count;
+            return n;
+        }
+
+        if (match(p, TOK_LBRACKET)) {
+            Node* n = ast_new(p->arena, NODE_INDEX, line);
+            n->as.index.name = name;
+            n->as.index.name_len = name_len;
+            n->as.index.index = parse_expr(p);
+            expect(p, TOK_RBRACKET, "expected ']' after array index");
             return n;
         }
 
@@ -254,6 +298,8 @@ static Node* parse_var_decl(Parser* p, int is_var_kw) {
     n->as.var_decl.init = NULL;
     n->as.var_decl.type.name = NULL;
     n->as.var_decl.type.len = 0;
+    n->as.var_decl.type.is_array = 0;
+    n->as.var_decl.type.array_len = 0;
 
     if (match(p, TOK_DEFINE)) {
         // ident := expr   (type inferred)
@@ -297,6 +343,20 @@ static Node* parse_assign_or_expr(Parser* p) {
     const char* name = p->cur.start;
     int name_len = p->cur.len;
     advance(p);
+
+    if (match(p, TOK_LBRACKET)) {
+        Node* index_expr = parse_expr(p);
+        expect(p, TOK_RBRACKET, "expected ']' after array index");
+        expect(p, TOK_ASSIGN, "expected '=' after array index");
+
+        Node* n = ast_new(p->arena, NODE_INDEX_ASSIGN, line);
+        n->as.index_assign.name = name;
+        n->as.index_assign.name_len = name_len;
+        n->as.index_assign.index = index_expr;
+        n->as.index_assign.value = parse_expr(p);
+        expect(p, TOK_SEMI, "expected ';' after assignment");
+        return n;
+    }
 
     if (match(p, TOK_ASSIGN)) {
         Node* n = ast_new(p->arena, NODE_ASSIGN, line);

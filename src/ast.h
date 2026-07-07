@@ -7,6 +7,8 @@
 typedef struct {
     const char* name;
     int len;
+    int is_array;
+    int array_len;
 } TypeRef;
 
 typedef enum {
@@ -23,6 +25,9 @@ typedef enum {
     NODE_CALL,
     NODE_IDENT,
     NODE_NUM,
+    NODE_STRING,
+    NODE_INDEX,
+    NODE_INDEX_ASSIGN,
     NODE_BREAK,
     NODE_CONTINUE,
 } NodeKind;
@@ -108,6 +113,24 @@ struct Node {
             const char* text;
             int len;
         } num;
+
+        struct {
+            const char* text;
+            int len;
+        } str;
+
+        struct {
+            const char* name;
+            int name_len;
+            Node* index;
+        } index;
+
+        struct {
+            const char* name;
+            int name_len;
+            Node* index;
+            Node* value;
+        } index_assign;
 
         struct {
             Node* init;  // NULL if no init clause

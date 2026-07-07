@@ -17,6 +17,8 @@ static void emit_c_type(FILE* out, TypeRef t) {
         fprintf(out, "int64_t");
     } else if (t.len == 6 && strncmp(t.name, "int128", 6) == 0) {
         fprintf(out, "__int128");
+    } else if (t.len == 6 && strncmp(t.name, "string", 6) == 0) {
+        fprintf(out, "const char*");
     } else {
         // unknown type name; emit as-is and let the C compiler complain
         fprintf(out, "%.*s", t.len, t.name);
@@ -87,6 +89,16 @@ static void emit_expr(FILE* out, Node* n) {
             fprintf(out, ")");
             break;
 
+        case NODE_STRING:
+            fprintf(out, "\"%.*s\"", n->as.str.len, n->as.str.text);
+            break;
+
+        case NODE_INDEX:
+            fprintf(out, "%.*s[", n->as.index.name_len, n->as.index.name);
+            emit_expr(out, n->as.index.index);
+            fprintf(out, "]");
+            break;
+
         default:
             fprintf(out, "/* unsupported expr node: %s */",
                     node_kind_name(n->kind));
@@ -108,6 +120,9 @@ static void emit_for_clause(FILE* out, Node* n) {
                 fprintf(out, "int64_t");
             }
             fprintf(out, " %.*s", n->as.var_decl.name_len, n->as.var_decl.name);
+            if (n->as.var_decl.type.is_array) {
+                fprintf(out, "[%d]", n->as.var_decl.type.array_len);
+            }
             if (n->as.var_decl.init) {
                 fprintf(out, " = ");
                 emit_expr(out, n->as.var_decl.init);
@@ -151,6 +166,9 @@ static void emit_stmt(FILE* out, Node* n, int depth) {
                 fprintf(out, "int64_t");
             }
             fprintf(out, " %.*s", n->as.var_decl.name_len, n->as.var_decl.name);
+            if (n->as.var_decl.type.is_array) {
+                fprintf(out, "[%d]", n->as.var_decl.type.array_len);
+            }
             if (n->as.var_decl.init) {
                 fprintf(out, " = ");
                 emit_expr(out, n->as.var_decl.init);
@@ -163,6 +181,16 @@ static void emit_stmt(FILE* out, Node* n, int depth) {
             emit_indent(out, depth);
             fprintf(out, "%.*s = ", n->as.assign.name_len, n->as.assign.name);
             emit_expr(out, n->as.assign.value);
+            fprintf(out, ";\n");
+            break;
+
+        case NODE_INDEX_ASSIGN:
+            emit_indent(out, depth);
+            fprintf(out, "%.*s[", n->as.index_assign.name_len,
+                    n->as.index_assign.name);
+            emit_expr(out, n->as.index_assign.index);
+            fprintf(out, "] = ");
+            emit_expr(out, n->as.index_assign.value);
             fprintf(out, ";\n");
             break;
 
