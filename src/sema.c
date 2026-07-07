@@ -30,6 +30,7 @@ typedef struct {
     FuncInfo* funcs;
     int func_count;
     int func_cap;
+    int loop_depth;
     int had_error;
 } Sema;
 
@@ -331,6 +332,7 @@ static void check_stmt(Sema* s, Node* n) {
 
         case NODE_LOOP: {
             s->current = scope_push(s->current);
+            s->loop_depth++;
 
             if (n->as.loop.init) {
                 check_stmt(s, n->as.loop.init);
@@ -348,9 +350,24 @@ static void check_stmt(Sema* s, Node* n) {
                 check_stmt(s, n->as.loop.step);
             }
 
+            s->loop_depth--;
             s->current = scope_pop(s->current);
             break;
         }
+
+        case NODE_BREAK:
+            if (s->loop_depth == 0) {
+                error(s, n->line, "'break' used outside of a loop", "break",
+                      5);
+            }
+            break;
+
+        case NODE_CONTINUE:
+            if (s->loop_depth == 0) {
+                error(s, n->line, "'continue' used outside of a loop",
+                      "continue", 8);
+            }
+            break;
 
         case NODE_RETURN:
             if (n->as.return_stmt.expr) {
@@ -385,6 +402,7 @@ SemaResult sema_check(Node* program) {
     s.funcs = NULL;
     s.func_count = 0;
     s.func_cap = 0;
+    s.loop_depth = 0;
     s.had_error = 0;
 
     for (int i = 0; i < program->as.program.funcs.count; i++) {

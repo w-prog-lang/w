@@ -455,6 +455,20 @@ static Node* parse_stmt(Parser* p) {
         return parse_return(p);
     }
 
+    if (check(p, TOK_KW_BREAK)) {
+        int line = p->cur.line;
+        advance(p);
+        expect(p, TOK_SEMI, "expected ';' after break");
+        return ast_new(p->arena, NODE_BREAK, line);
+    }
+
+    if (check(p, TOK_KW_CONTINUE)) {
+        int line = p->cur.line;
+        advance(p);
+        expect(p, TOK_SEMI, "expected ';' after continue");
+        return ast_new(p->arena, NODE_CONTINUE, line);
+    }
+
     if (check(p, TOK_IDENT)) {
         // lookahead: is this "ident := ..." or "ident : type ..." (decl),
         // or "ident = ..." (assign), or bare "ident;" (illegal expr stmt)?

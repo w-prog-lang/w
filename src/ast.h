@@ -22,6 +22,8 @@ typedef enum {
     NODE_CALL,
     NODE_IDENT,
     NODE_NUM,
+    NODE_BREAK,
+    NODE_CONTINUE,
 } NodeKind;
 
 typedef struct Node Node;

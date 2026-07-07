@@ -171,6 +171,14 @@ static void print_node(Node* n, int depth) {
             }
             break;
 
+        case NODE_BREAK:
+            printf("Break\n");
+            break;
+
+        case NODE_CONTINUE:
+            printf("Continue\n");
+            break;
+
         case NODE_BINOP:
             printf("BinOp %s\n", op_str(n->as.binop.op));
             print_node(n->as.binop.left, depth + 1);

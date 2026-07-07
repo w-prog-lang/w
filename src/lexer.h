@@ -17,6 +17,8 @@ typedef enum {
     TOK_KW_ELSE,
     TOK_KW_LOOP,
     TOK_KW_STRUCT,
+    TOK_KW_BREAK,
+    TOK_KW_CONTINUE,
 
     TOK_PLUS,
     TOK_MINUS,

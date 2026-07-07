@@ -12,6 +12,7 @@ static const Keyword keywords[] = {
     {"fn", TOK_KW_FN},         {"let", TOK_KW_LET},       {"var", TOK_KW_VAR},
     {"return", TOK_KW_RETURN}, {"if", TOK_KW_IF},         {"else", TOK_KW_ELSE},
     {"loop", TOK_KW_LOOP},     {"struct", TOK_KW_STRUCT},
+    {"break", TOK_KW_BREAK},   {"continue", TOK_KW_CONTINUE},
 };
 
 void lexer_init(Lexer* lx, const char* src, size_t len) {
@@ -225,13 +226,14 @@ Token lexer_next(Lexer* lx) {
 
 const char* token_kind_name(TokenKind kind) {
     static const char* names[] = {
-        "EOF",    "IDENT",       "NUM",          "STRING", "FN",     "LET",
-        "VAR",    "RETURN",      "IF",           "ELSE",   "LOOP",   "STRUCT",
-        "PLUS",   "MINUS",       "STAR",         "SLASH",  "ASSIGN", "DEFINE",
-        "ARROW",  "PLUS_ASSIGN", "MINUS_ASSIGN", "EQ",     "NEQ",    "LT",
-        "GT",     "LE",          "GE",           "LPAREN", "RPAREN", "LBRACE",
-        "RBRACE", "LBRACKET",    "RBRACKET",     "COMMA",  "SEMI",   "COLON",
-        "DOT",    "ERROR",
+        "EOF",      "IDENT",       "NUM",          "STRING",   "FN",
+        "LET",      "VAR",         "RETURN",       "IF",       "ELSE",
+        "LOOP",     "STRUCT",      "BREAK",        "CONTINUE", "PLUS",
+        "MINUS",    "STAR",        "SLASH",        "ASSIGN",   "DEFINE",
+        "ARROW",    "PLUS_ASSIGN", "MINUS_ASSIGN", "EQ",       "NEQ",
+        "LT",       "GT",          "LE",           "GE",       "LPAREN",
+        "RPAREN",   "LBRACE",      "RBRACE",       "LBRACKET", "RBRACKET",
+        "COMMA",    "SEMI",        "COLON",        "DOT",      "ERROR",
     };
     return names[kind];
 }

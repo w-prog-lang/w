@@ -86,6 +86,36 @@ static void emit_expr(FILE* out, Node* n) {
 
 static void emit_stmt(FILE* out, Node* n, int depth);
 
+// emits a loop init/step clause for use inside a C `for (...)` header:
+// no leading indent, no trailing ';', no newline
+static void emit_for_clause(FILE* out, Node* n) {
+    switch (n->kind) {
+        case NODE_VAR_DECL:
+            if (n->as.var_decl.is_const) fprintf(out, "const ");
+            if (n->as.var_decl.type.name) {
+                emit_c_type(out, n->as.var_decl.type);
+            } else {
+                fprintf(out, "int64_t");
+            }
+            fprintf(out, " %.*s", n->as.var_decl.name_len, n->as.var_decl.name);
+            if (n->as.var_decl.init) {
+                fprintf(out, " = ");
+                emit_expr(out, n->as.var_decl.init);
+            }
+            break;
+
+        case NODE_ASSIGN:
+            fprintf(out, "%.*s = ", n->as.assign.name_len, n->as.assign.name);
+            emit_expr(out, n->as.assign.value);
+            break;
+
+        default:
+            fprintf(out, "/* unsupported for-clause node: %s */",
+                    node_kind_name(n->kind));
+            break;
+    }
+}
+
 static void emit_block(FILE* out, Node* block, int depth) {
     emit_indent(out, depth);
     fprintf(out, "{\n");
@@ -141,38 +171,25 @@ static void emit_stmt(FILE* out, Node* n, int depth) {
 
         case NODE_LOOP: {
             if (n->as.loop.init || n->as.loop.step) {
+                // for-style: translate directly to C's `for` so that
+                // `continue` correctly runs the step clause
                 emit_indent(out, depth);
-                fprintf(out, "{\n");
-
+                fprintf(out, "for (");
                 if (n->as.loop.init) {
-                    emit_stmt(out, n->as.loop.init, depth + 1);
+                    emit_for_clause(out, n->as.loop.init);
                 }
-
-                emit_indent(out, depth + 1);
-                fprintf(out, "while (");
+                fprintf(out, "; ");
                 if (n->as.loop.cond) {
                     emit_expr(out, n->as.loop.cond);
                 } else {
                     fprintf(out, "1");
                 }
-                fprintf(out, ")\n");
-
-                emit_indent(out, depth + 1);
-                fprintf(out, "{\n");
-                for (int i = 0; i < n->as.loop.body->as.block.stmts.count;
-                     i++) {
-                    emit_stmt(out,
-                              (Node*)n->as.loop.body->as.block.stmts.items[i],
-                              depth + 2);
-                }
+                fprintf(out, "; ");
                 if (n->as.loop.step) {
-                    emit_stmt(out, n->as.loop.step, depth + 2);
+                    emit_for_clause(out, n->as.loop.step);
                 }
-                emit_indent(out, depth + 1);
-                fprintf(out, "}\n");
-
-                emit_indent(out, depth);
-                fprintf(out, "}\n");
+                fprintf(out, ")\n");
+                emit_block(out, n->as.loop.body, depth);
             } else {
                 emit_indent(out, depth);
                 fprintf(out, "while (");
@@ -186,6 +203,16 @@ static void emit_stmt(FILE* out, Node* n, int depth) {
             }
             break;
         }
+
+        case NODE_BREAK:
+            emit_indent(out, depth);
+            fprintf(out, "break;\n");
+            break;
+
+        case NODE_CONTINUE:
+            emit_indent(out, depth);
+            fprintf(out, "continue;\n");
+            break;
 
         case NODE_RETURN:
             emit_indent(out, depth);
