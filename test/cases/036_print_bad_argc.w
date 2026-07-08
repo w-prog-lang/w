@@ -1,4 +1,4 @@
 fn main: int32 <- () {
-    print(1, 2);
+    print();
     return 0;
 }

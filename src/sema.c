@@ -351,16 +351,16 @@ static TypeRef infer_expr(Sema* s, Node* n) {
 
         case NODE_CALL: {
             // "print" is a builtin, not a user-declarable function: it takes
-            // exactly one argument, of any printable type, and its result
-            // (if used) is a placeholder int64 since the language has no
-            // void type
+            // one or more arguments of any printable type and writes them
+            // back to back, followed by a newline; its result (if used) is a
+            // placeholder int64 since the language has no void type
             if (n->as.call.name_len == 5 &&
                 strncmp(n->as.call.name, "print", 5) == 0) {
-                if (n->as.call.arg_count != 1) {
+                if (n->as.call.arg_count < 1) {
                     fprintf(stderr,
-                            "sema error at line %d: 'print' expects 1 arg, "
-                            "got %d\n",
-                            n->line, n->as.call.arg_count);
+                            "sema error at line %d: 'print' expects at least "
+                            "1 arg\n",
+                            n->line);
                     s->had_error = 1;
                 }
                 for (int i = 0; i < n->as.call.arg_count; i++) {

@@ -83,14 +83,22 @@ static void emit_expr(FILE* out, Node* n) {
             break;
 
         case NODE_CALL: {
-            // "print" is a builtin dispatched through the w_print() macro
-            // (see codegen_emit's preamble), not a real C function
+            // "print" is a builtin: each argument goes through the
+            // w_print_val() dispatch macro (see codegen_emit's preamble),
+            // then w_print_nl() ends the line; the whole call is one comma
+            // expression so print stays usable in expression position
             if (n->as.call.name_len == 5 &&
                 strncmp(n->as.call.name, "print", 5) == 0) {
-                fprintf(out, "w_print(");
-            } else {
-                fprintf(out, "%.*s(", n->as.call.name_len, n->as.call.name);
+                fprintf(out, "(");
+                for (int i = 0; i < n->as.call.arg_count; i++) {
+                    fprintf(out, "w_print_val(");
+                    emit_expr(out, n->as.call.args[i]);
+                    fprintf(out, "), ");
+                }
+                fprintf(out, "w_print_nl())");
+                break;
             }
+            fprintf(out, "%.*s(", n->as.call.name_len, n->as.call.name);
             for (int i = 0; i < n->as.call.arg_count; i++) {
                 if (i > 0) fprintf(out, ", ");
                 emit_expr(out, n->as.call.args[i]);
@@ -349,18 +357,21 @@ static void emit_func(FILE* out, Node* fn) {
 }
 
 // print() has no single C type -- it accepts any integer type or a string,
-// so dispatch on the argument's C type via _Generic rather than tracking
-// static types through codegen (which has no type oracle of its own)
+// so each argument dispatches on its C type via _Generic rather than
+// tracking static types through codegen (which has no type oracle of its
+// own); a print(a, b, ...) call becomes one w_print_val() per argument
+// followed by w_print_nl()
 static void emit_print_preamble(FILE* out) {
     fprintf(out, "#include <stdio.h>\n\n");
     fprintf(out,
             "static void w_print_i64(int64_t v) { "
-            "printf(\"%%lld\\n\", (long long)v); }\n");
+            "printf(\"%%lld\", (long long)v); }\n");
     fprintf(out,
             "static void w_print_str(const char* v) { "
-            "printf(\"%%s\\n\", v); }\n");
+            "printf(\"%%s\", v); }\n");
+    fprintf(out, "static void w_print_nl(void) { printf(\"\\n\"); }\n");
     fprintf(out,
-            "#define w_print(x) _Generic((x), "
+            "#define w_print_val(x) _Generic((x), "
             "char*: w_print_str, const char*: w_print_str, "
             "default: w_print_i64)(x)\n\n");
 }
