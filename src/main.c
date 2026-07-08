@@ -3,6 +3,7 @@
 
 #include "ast.h"
 #include "codegen.h"
+#include "import.h"
 #include "lexer.h"
 #include "parser.h"
 #include "sema.h"
@@ -87,12 +88,20 @@ static void print_node(Node* n, int depth) {
     switch (n->kind) {
         case NODE_PROGRAM:
             printf("Program\n");
+            for (int i = 0; i < n->as.program.imports.count; i++) {
+                print_node((Node*)n->as.program.imports.items[i], depth + 1);
+            }
             for (int i = 0; i < n->as.program.structs.count; i++) {
                 print_node((Node*)n->as.program.structs.items[i], depth + 1);
             }
             for (int i = 0; i < n->as.program.funcs.count; i++) {
                 print_node((Node*)n->as.program.funcs.items[i], depth + 1);
             }
+            break;
+
+        case NODE_IMPORT:
+            printf("Import <%.*s> [%s]\n", n->as.import.path_len,
+                   n->as.import.path, n->as.import.is_c ? "C" : "W");
             break;
 
         case NODE_STRUCT_DECL:
@@ -264,6 +273,13 @@ static void print_node(Node* n, int depth) {
     }
 }
 
+// frees the source buffers of imported files (the AST points into them, so
+// they must outlive codegen)
+static void free_buffers(PtrList* l) {
+    for (int i = 0; i < l->count; i++) free(l->items[i]);
+    free(l->items);
+}
+
 int main(int argc, char** argv) {
     if (argc < 2) {
         fprintf(stderr, "usage: %s <file>\n", argv[0]);
@@ -288,12 +304,23 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    PtrList import_buffers;
+    ptrlist_init(&import_buffers);
+    if (imports_resolve(program, argv[1], &arena, &import_buffers)) {
+        fprintf(stderr, "import resolution failed\n");
+        free_buffers(&import_buffers);
+        arena_free(&arena);
+        free(src);
+        return 1;
+    }
+
     print_node(program, 0);
 
     printf("\n--- sema check ---\n");
     SemaResult sr = sema_check(program);
     if (sr.had_error) {
         fprintf(stderr, "semantic analysis failed\n");
+        free_buffers(&import_buffers);
         arena_free(&arena);
         free(src);
         return 1;
@@ -304,6 +331,7 @@ int main(int argc, char** argv) {
         FILE* out = fopen(argv[2], "w");
         if (!out) {
             fprintf(stderr, "cannot open output file: %s\n", argv[2]);
+            free_buffers(&import_buffers);
             arena_free(&arena);
             free(src);
             return 1;
@@ -315,6 +343,7 @@ int main(int argc, char** argv) {
         codegen_emit(program, stdout);
     }
 
+    free_buffers(&import_buffers);
     arena_free(&arena);
     free(src);
     return 0;

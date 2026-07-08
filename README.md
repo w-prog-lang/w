@@ -18,6 +18,9 @@ character:
   fits it*.
 - **A distinct function arrow.** Functions are written
   `fn name: ReturnType <- (params) { ... }`.
+- **Source-level imports.** `#import <lib.w>` merges another W file into the
+  program; `#import <lib.h>` passes a C header through to the generated C, so
+  W code can call into the C world.
 
 ## A taste
 
@@ -68,9 +71,10 @@ There are no third-party dependencies.
 
 `wlangc` reads a `.w` source file, then:
 
-1. prints the parsed AST to stdout (a debugging dump),
-2. runs semantic analysis and prints whether it passed, and
-3. emits the generated C — to `output.c` if a second argument is given, otherwise
+1. resolves its `#import`s (W libraries are parsed and merged in),
+2. prints the parsed AST to stdout (a debugging dump),
+3. runs semantic analysis and prints whether it passed, and
+4. emits the generated C — to `output.c` if a second argument is given, otherwise
    to stdout.
 
 To go all the way to a runnable program, hand the generated C to any C compiler:
@@ -97,6 +101,7 @@ understands five expectation formats:
 | `stdout`                     | program output must match the sibling `.stdout` file        |
 | `codegen_contains SUBSTRING` | generated C must contain `SUBSTRING`                        |
 | `parse_fail`                 | compilation must fail during parsing                        |
+| `import_fail`                | compilation must fail during import resolution              |
 | `sema_fail`                  | compilation must fail during semantic analysis              |
 
 ## Project layout
@@ -106,6 +111,7 @@ src/
   lexer.{h,c}     tokenizer — pointer+length tokens, zero allocation
   ast.{h,c}       tagged-union AST node definitions
   parser.{h,c}    recursive-descent parser
+  import.{h,c}    #import resolution — parses and merges W libraries
   sema.{h,c}      scope chains, type inference, const/narrowing checks
   codegen.{h,c}   C transpiler
   util.{h,c}      arena allocator + PtrList dynamic array
@@ -128,9 +134,9 @@ semantic rules, the C translation model, and a full grammar — lives in
 The pipeline compiles a working subset of the language end to end: functions,
 structs, fixed-size arrays, strings, integer arithmetic, the full set of
 comparison and logical operators, `if`/`else if`/`else`, all three `loop` forms,
-`break`/`continue`, compound assignment, a variadic `print` builtin, and a
-C-like `printf` builtin whose format string is checked at compile time. All 45
-test cases pass.
+`break`/`continue`, compound assignment, a variadic `print` builtin, a C-like
+`printf` builtin whose format string is checked at compile time, and `#import`
+of both W libraries and C headers. All 52 test cases pass.
 
 Known gaps, described in the guide's *Current limitations* section, include the
 absence of a floating-point type, the lack of a return-type compatibility check,

@@ -52,6 +52,8 @@ typedef enum {
     TOK_COLON,
     TOK_DOT,
 
+    TOK_IMPORT,  // '#import <path>' -- token text is the path between <>
+
     TOK_ERROR,
 } TokenKind;
 

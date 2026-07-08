@@ -13,7 +13,7 @@ const char* node_kind_name(NodeKind kind) {
         "IF",           "LOOP",         "RETURN",       "BINOP",    "UNARY",
         "CALL",         "IDENT",        "NUM",          "STRING",   "INDEX",
         "INDEX_ASSIGN", "STRUCT_DECL",  "FIELD",        "FIELD_ASSIGN",
-        "BREAK",        "CONTINUE",
+        "BREAK",        "CONTINUE",     "IMPORT",
     };
     return names[kind];
 }

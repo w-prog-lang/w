@@ -7,8 +7,8 @@ Where the compiler has a rough edge or an unimplemented corner, this guide says 
 in [Current limitations](#current-limitations) instead of pretending otherwise.
 
 W is a small, statically-typed language that transpiles to C. A W program is a set
-of top-level function and struct declarations; the compiler type-checks them and
-emits a C translation unit you can compile with any C compiler.
+of top-level import, function, and struct declarations; the compiler type-checks
+them and emits a C translation unit you can compile with any C compiler.
 
 ## Contents
 
@@ -25,10 +25,11 @@ emits a C translation unit you can compile with any C compiler.
 11. [Expressions and operators](#expressions-and-operators)
 12. [Statements and control flow](#statements-and-control-flow)
 13. [The `print` and `printf` builtins](#the-print-and-printf-builtins)
-14. [The compilation model](#the-compilation-model)
-15. [Using the compiler](#using-the-compiler)
-16. [Grammar reference](#grammar-reference)
-17. [Current limitations](#current-limitations)
+14. [Imports](#imports)
+15. [The compilation model](#the-compilation-model)
+16. [Using the compiler](#using-the-compiler)
+17. [Grammar reference](#grammar-reference)
+18. [Current limitations](#current-limitations)
 
 ---
 
@@ -151,6 +152,19 @@ processing**. An unterminated string is a lexical error.
 `:=` is the *define* operator (inferred-type declaration). `<-` is a single token
 used in function signatures. A lone `&` or `|` (not doubled) is a lexical error —
 there are no bitwise operators.
+
+### The import directive
+
+The `#` character introduces exactly one construct: the `#import` directive. The
+lexer folds the whole directive — `#import`, optional spaces, and an
+angle-bracketed path — into a single token whose text is the raw path between
+`<` and `>` (no escape processing, scanned to the closing `>` on the same line).
+See [Imports](#imports) for its meaning.
+
+```w
+#import <mathlib.w>
+#import <string.h>
+```
 
 ---
 
@@ -585,21 +599,80 @@ wide), and `%s` passes through unchanged.
 
 ---
 
+## Imports
+
+A file pulls in other code with the `#import` directive. The path is written
+between angle brackets, and its extension selects one of two behaviors:
+
+```w
+#import <mathlib.w>     // a W library: parsed and merged into the program
+#import <string.h>      // a C header: passed through as #include <string.h>
+```
+
+Any other extension is a parse error. Imports are conventionally written at the
+top of the file, but the parser accepts them anywhere a top-level declaration is
+legal.
+
+### W libraries (`.w`)
+
+A W library is just an ordinary `.w` file of `fn` and `struct` declarations (and
+possibly further imports). Importing it reads, parses, and merges its
+declarations into the importing program, as if everything had been written in
+one file; the merged declarations are type-checked together with the rest of the
+program.
+
+- Paths are resolved **relative to the directory of the importing file**: a
+  library in a subdirectory is imported as `#import <libs/mathlib.w>`, while a
+  library importing a sibling in its own directory names it directly.
+- Each file is merged **at most once** per compilation, however many import
+  paths lead to it — the diamond pattern is fine, and a circular import is
+  simply cut rather than looping.
+- All merged declarations share one flat namespace. Two files that declare the
+  same function or struct name collide with the ordinary redefinition error.
+
+### C headers (`.h`)
+
+Importing a `.h` file emits a matching `#include <...>` at the top of the
+generated C, deduplicated across the whole import graph (a header requested by
+several W libraries is included once).
+
+The compiler does not read C headers, so it cannot know what they declare. When
+at least one `.h` import is present, a call to a function name that no W
+declaration provides is **assumed to come from a C header**: its arguments are
+still checked as expressions, but the call itself is emitted as-is for the C
+compiler to resolve, and its result is treated as `int64`. Without any `.h`
+import, calling an undeclared function remains a semantic error, exactly as
+before.
+
+```w
+#import <string.h>
+
+fn main: int32 <- () {
+    return strlen("hello");   // C's strlen; process exits with 5
+}
+```
+
+---
+
 ## The compilation model
 
 `wlangc` is a transpiler: it lowers a W program to a single C translation unit. The
 mapping is direct and predictable.
 
-- **Preamble.** Every output begins with `#include <stdint.h>`, then a small
-  `print` support block (`#include <stdio.h>` plus three helpers and the
-  `w_print_val` `_Generic` macro).
+- **Preamble.** Every output begins with `#include <stdint.h>` and one
+  `#include <...>` per imported C header, then a small `print` support block
+  (`#include <stdio.h>` plus three helpers and the `w_print_val` `_Generic`
+  macro).
 - **Types.** W integer types map to the `<stdint.h>` fixed-width types (`int8` →
   `int8_t`, and so on); `int128` maps to the compiler builtin `__int128`; `string`
   maps to `const char*`.
 - **Structs** become C `typedef struct { ... } Name;` definitions, emitted before
   functions.
-- **Functions** become ordinary C functions. A zero-parameter function is emitted
-  with a `(void)` parameter list. Array parameters keep their `[N]` bounds.
+- **Functions** become ordinary C functions. Every function except `main` is
+  forward-declared with a prototype before any definition, so W's any-order
+  call rule (and code merged from imported libraries) survives the translation
+  to C. A zero-parameter function is emitted with a `(void)` parameter list.
+  Array parameters keep their `[N]` bounds.
 - **Declarations.** Constant bindings gain a `const` qualifier. An inferred
   declaration is emitted with the type the analyzer computed for it.
 - **Loops.** A three-clause loop lowers to a C `for` loop, which is what makes
@@ -645,8 +718,10 @@ cc hello.c -o hello
 echo $?     # the exit status is main's return value
 ```
 
-If parsing or semantic analysis fails, the compiler reports the error with a line
-number and exits without emitting C.
+If parsing, import resolution, or semantic analysis fails, the compiler reports
+the error with a line number and exits without emitting C. An unresolvable
+import (a missing file, or a library that fails to parse) is reported as an
+`import error`.
 
 ---
 
@@ -657,7 +732,12 @@ terminals produced by the lexer (`IDENT`, `NUM`, `STRING`); `?` marks optional
 parts, `*` repetition, and `|` alternatives.
 
 ```ebnf
-program        = { func_decl | struct_decl } ;
+program        = { import_decl | func_decl | struct_decl } ;
+
+import_decl    = "#import" "<" PATH ">" ;
+                 (* the lexer folds the whole directive into one token;
+                    PATH is raw text up to the closing '>' and must end
+                    in ".w" or ".h" *)
 
 func_decl      = "fn" IDENT ":" type "<-" "(" [ params ] ")" block ;
 params         = param { "," param } ;
@@ -738,5 +818,14 @@ They are the natural places to contribute.
   quotes; sequences like `\n` are not interpreted.
 - **No bitwise operators.** A single `&` or `|` is a lexical error; only `&&` and
   `||` exist.
-- **Single file, no modules or imports.** A program is one source file of top-level
-  `fn` and `struct` declarations; there are no global variables.
+- **Imports share one flat namespace.** `#import <lib.w>` merges the library's
+  declarations directly into the program — there is no qualification or
+  renaming, so a name collision across files is a redefinition error.
+  Diagnostics report line numbers only, not file names, so an error inside an
+  imported library is attributed to its line in that library without saying
+  which file it came from.
+- **C imports are unchecked.** Once any `.h` is imported, a call to an
+  undeclared function is assumed to be a C function and typed `int64` — a
+  typo'd function name is then caught only by the C compiler.
+- **No global variables.** Top-level declarations are imports, functions, and
+  structs; all state lives in locals and parameters.

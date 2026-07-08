@@ -42,6 +42,7 @@ typedef struct {
     int struct_count;
     int struct_cap;
     int loop_depth;
+    int has_c_imports;
     int had_error;
 } Sema;
 
@@ -442,6 +443,17 @@ static TypeRef infer_expr(Sema* s, Node* n) {
             }
 
             FuncInfo* fi = lookup_func(s, n->as.call.name, n->as.call.name_len);
+            if (!fi && s->has_c_imports) {
+                // a '.h' import is in effect, so an undeclared callee is
+                // assumed to come from that C header -- wlangc cannot see
+                // into C headers, so the arguments are still analyzed for
+                // their own errors but the call itself goes unchecked and
+                // its result is treated as int64
+                for (int i = 0; i < n->as.call.arg_count; i++) {
+                    infer_expr(s, n->as.call.args[i]);
+                }
+                return type_int64();
+            }
             if (!fi) {
                 error(s, n->line, "call to undeclared function",
                       n->as.call.name, n->as.call.name_len);
@@ -710,7 +722,13 @@ SemaResult sema_check(Node* program) {
     s.struct_count = 0;
     s.struct_cap = 0;
     s.loop_depth = 0;
+    s.has_c_imports = 0;
     s.had_error = 0;
+
+    for (int i = 0; i < program->as.program.imports.count; i++) {
+        Node* imp = (Node*)program->as.program.imports.items[i];
+        if (imp->as.import.is_c) s.has_c_imports = 1;
+    }
 
     for (int i = 0; i < program->as.program.structs.count; i++) {
         Node* sd = (Node*)program->as.program.structs.items[i];

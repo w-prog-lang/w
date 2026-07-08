@@ -800,8 +800,29 @@ static Node* parse_struct_decl(Parser* p) {
     return n;
 }
 
+// import_decl := '#import' '<' PATH '>'  (one TOK_IMPORT token; the path's
+// extension decides whether it names a W library or a C header)
+static Node* parse_import_decl(Parser* p) {
+    Node* n = ast_new(p->arena, NODE_IMPORT, p->cur.line);
+    n->as.import.path = p->cur.start;
+    n->as.import.path_len = p->cur.len;
+    n->as.import.is_c = 0;
+
+    const char* path = p->cur.start;
+    int len = p->cur.len;
+    if (len >= 2 && path[len - 2] == '.' && path[len - 1] == 'h') {
+        n->as.import.is_c = 1;
+    } else if (!(len >= 2 && path[len - 2] == '.' && path[len - 1] == 'w')) {
+        error_at(p, p->cur, "import path must end in '.w' or '.h'");
+    }
+
+    advance(p);
+    return n;
+}
+
 Node* parser_parse_program(Parser* p) {
     Node* n = ast_new(p->arena, NODE_PROGRAM, p->cur.line);
+    ptrlist_init(&n->as.program.imports);
     ptrlist_init(&n->as.program.funcs);
     ptrlist_init(&n->as.program.structs);
 
@@ -810,8 +831,10 @@ Node* parser_parse_program(Parser* p) {
             ptrlist_push(&n->as.program.funcs, parse_func_decl(p));
         } else if (check(p, TOK_KW_STRUCT)) {
             ptrlist_push(&n->as.program.structs, parse_struct_decl(p));
+        } else if (check(p, TOK_IMPORT)) {
+            ptrlist_push(&n->as.program.imports, parse_import_decl(p));
         } else {
-            error_at(p, p->cur, "expected 'fn' or 'struct'");
+            error_at(p, p->cur, "expected '#import', 'fn' or 'struct'");
             advance(p);
         }
     }

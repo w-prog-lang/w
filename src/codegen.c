@@ -383,7 +383,7 @@ static void emit_struct(FILE* out, Node* sd) {
             sd->as.struct_decl.name);
 }
 
-static void emit_func(FILE* out, Node* fn) {
+static void emit_func_signature(FILE* out, Node* fn) {
     emit_c_type(out, fn->as.func_decl.return_type);
     fprintf(out, " %.*s(", fn->as.func_decl.name_len, fn->as.func_decl.name);
 
@@ -399,8 +399,17 @@ static void emit_func(FILE* out, Node* fn) {
             fprintf(out, "[%d]", p->type.array_len);
         }
     }
-    fprintf(out, ")\n");
+    fprintf(out, ")");
+}
 
+static int is_main_func(Node* fn) {
+    return fn->as.func_decl.name_len == 4 &&
+           strncmp(fn->as.func_decl.name, "main", 4) == 0;
+}
+
+static void emit_func(FILE* out, Node* fn) {
+    emit_func_signature(out, fn);
+    fprintf(out, "\n");
     emit_block(out, fn->as.func_decl.body, 0);
     fprintf(out, "\n");
 }
@@ -426,12 +435,33 @@ static void emit_print_preamble(FILE* out) {
 }
 
 void codegen_emit(Node* program, FILE* out) {
-    fprintf(out, "#include <stdint.h>\n\n");
+    fprintf(out, "#include <stdint.h>\n");
+    // one #include per imported C header ('.w' imports were merged into the
+    // program during import resolution and emit nothing here)
+    for (int i = 0; i < program->as.program.imports.count; i++) {
+        Node* imp = (Node*)program->as.program.imports.items[i];
+        if (!imp->as.import.is_c) continue;
+        fprintf(out, "#include <%.*s>\n", imp->as.import.path_len,
+                imp->as.import.path);
+    }
+    fprintf(out, "\n");
     emit_print_preamble(out);
 
     for (int i = 0; i < program->as.program.structs.count; i++) {
         emit_struct(out, (Node*)program->as.program.structs.items[i]);
     }
+
+    // forward-declare every function so W's any-order call rule survives the
+    // translation to C (imported libraries land after the root file's code)
+    int protos = 0;
+    for (int i = 0; i < program->as.program.funcs.count; i++) {
+        Node* fn = (Node*)program->as.program.funcs.items[i];
+        if (is_main_func(fn)) continue;
+        emit_func_signature(out, fn);
+        fprintf(out, ";\n");
+        protos++;
+    }
+    if (protos > 0) fprintf(out, "\n");
 
     for (int i = 0; i < program->as.program.funcs.count; i++) {
         emit_func(out, (Node*)program->as.program.funcs.items[i]);

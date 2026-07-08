@@ -33,6 +33,7 @@ typedef enum {
     NODE_FIELD_ASSIGN,
     NODE_BREAK,
     NODE_CONTINUE,
+    NODE_IMPORT,
 } NodeKind;
 
 typedef struct Node Node;
@@ -49,9 +50,16 @@ struct Node {
 
     union {
         struct {
+            PtrList imports;
             PtrList funcs;
             PtrList structs;
         } program;
+
+        struct {
+            const char* path;
+            int path_len;
+            int is_c;  // 1 for a '.h' C header, 0 for a '.w' W library
+        } import;
 
         struct {
             const char* name;

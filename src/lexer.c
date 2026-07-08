@@ -140,6 +140,39 @@ static Token lex_colon(Lexer* lx) {
     return make_token(lx, TOK_COLON, start, 1);
 }
 
+// '#import' <path> -- the whole directive folds into one TOK_IMPORT token
+// whose text is the raw path between the angle brackets
+static Token lex_import(Lexer* lx) {
+    const char* hash = lx->src + lx->pos;
+    advance(lx);  // consume '#'
+
+    static const char kw[] = "import";
+    for (int i = 0; kw[i]; i++) {
+        if (peek(lx) != kw[i]) {
+            return make_token(lx, TOK_ERROR, hash,
+                              (int)((lx->src + lx->pos) - hash));
+        }
+        advance(lx);
+    }
+
+    while (peek(lx) == ' ' || peek(lx) == '\t') advance(lx);
+
+    if (peek(lx) != '<') {
+        return make_token(lx, TOK_ERROR, hash,
+                          (int)((lx->src + lx->pos) - hash));
+    }
+    advance(lx);  // consume '<'
+
+    const char* start = lx->src + lx->pos;
+    while (!at_end(lx) && peek(lx) != '>' && peek(lx) != '\n') advance(lx);
+    int len = (int)((lx->src + lx->pos) - start);
+    if (peek(lx) != '>') {
+        return make_token(lx, TOK_ERROR, start, len);
+    }
+    advance(lx);  // consume '>'
+    return make_token(lx, TOK_IMPORT, start, len);
+}
+
 static Token lex_lt(Lexer* lx) {
     const char* start = lx->src + lx->pos;
     advance(lx);  // consume '<'
@@ -210,6 +243,8 @@ Token lexer_next(Lexer* lx) {
             return make_token(lx, TOK_DOT, start, 1);
         case ':':
             return lex_colon(lx);
+        case '#':
+            return lex_import(lx);
         case '<':
             return lex_lt(lx);
         case '=':
@@ -238,7 +273,8 @@ const char* token_kind_name(TokenKind kind) {
         "EQ",       "NEQ",         "LT",           "GT",          "LE",
         "GE",       "BANG",        "AND_AND",      "OR_OR",       "LPAREN",
         "RPAREN",   "LBRACE",      "RBRACE",       "LBRACKET",    "RBRACKET",
-        "COMMA",    "SEMI",        "COLON",        "DOT",         "ERROR",
+        "COMMA",    "SEMI",        "COLON",        "DOT",         "IMPORT",
+        "ERROR",
     };
     return names[kind];
 }

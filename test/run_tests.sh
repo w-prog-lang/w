@@ -48,6 +48,17 @@ for src in "$CASES_DIR"/*.w; do
         fi
         ;;
 
+    import_fail)
+        if [ $compile_status -ne 0 ] && echo "$compile_log" | grep -q "import error"; then
+            echo "PASS $name (import_fail)"
+            pass=$((pass + 1))
+        else
+            echo "FAIL $name: expected import_fail, got status=$compile_status"
+            echo "$compile_log"
+            fail=$((fail + 1))
+        fi
+        ;;
+
     codegen_contains\ *)
         # everything after "codegen_contains " is the substring to look for
         needle="${expect#codegen_contains }"
