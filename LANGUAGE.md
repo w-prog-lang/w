@@ -1,0 +1,742 @@
+# The W Language Guide
+
+This guide describes the W (wlang) language exactly as implemented by the `wlangc`
+compiler in this repository. Everything here is grounded in the source — the
+lexer, parser, semantic analyzer, and C code generator — rather than in aspiration.
+Where the compiler has a rough edge or an unimplemented corner, this guide says so
+in [Current limitations](#current-limitations) instead of pretending otherwise.
+
+W is a small, statically-typed language that transpiles to C. A W program is a set
+of top-level function and struct declarations; the compiler type-checks them and
+emits a C translation unit you can compile with any C compiler.
+
+## Contents
+
+1. [Design philosophy](#design-philosophy)
+2. [A complete program](#a-complete-program)
+3. [Lexical structure](#lexical-structure)
+4. [Types](#types)
+5. [Declarations and bindings](#declarations-and-bindings)
+6. [The type system](#the-type-system)
+7. [Functions](#functions)
+8. [Structs](#structs)
+9. [Arrays](#arrays)
+10. [Strings](#strings)
+11. [Expressions and operators](#expressions-and-operators)
+12. [Statements and control flow](#statements-and-control-flow)
+13. [The `print` and `printf` builtins](#the-print-and-printf-builtins)
+14. [The compilation model](#the-compilation-model)
+15. [Using the compiler](#using-the-compiler)
+16. [Grammar reference](#grammar-reference)
+17. [Current limitations](#current-limitations)
+
+---
+
+## Design philosophy
+
+A few principles run through the whole language:
+
+- **Immutable by default.** A binding introduced without the `var` keyword is
+  constant. Mutation is something you ask for, not something you get for free.
+- **Explicit, sized integers.** There is no bare `int`. Every integer has a known
+  width, and literals are inferred to the smallest signed type that holds them.
+- **One way to loop.** A single `loop` keyword expresses infinite loops,
+  condition loops, and counting loops. There is no `while` or `for` keyword.
+- **Transpile to readable C.** The compiler's output is meant to be legible. Each
+  W construct maps to a small, predictable piece of C.
+- **The programmer owns runtime behavior.** For example, integer overflow at
+  runtime is not the compiler's concern — W emits the arithmetic and lets the
+  machine do what C would do.
+
+---
+
+## A complete program
+
+```w
+// factorials, a struct, and every loop shape in one file
+
+struct Counter {
+    value: int32
+}
+
+fn factorial: int64 <- (n: int32) {
+    var result := 1;
+    loop (var i := 2; i <= n; i += 1) {
+        result = result * i;
+    }
+    return result;
+}
+
+fn main: int32 <- () {
+    var c: Counter;
+    c.value = 5;
+
+    var f := factorial(c.value);   // 120
+    print(f);
+
+    return c.value;                // process exits with 5
+}
+```
+
+The `main` function is compiled to C's `main`, so the process's exit status is
+whatever `main` returns.
+
+---
+
+## Lexical structure
+
+The lexer scans raw source into tokens. Tokens carry a pointer into the source and
+a length — no substrings are copied.
+
+### Comments
+
+Only single-line comments exist, introduced by `//` and running to the end of the
+line. There are no block comments.
+
+```w
+// this is a comment
+var x := 1;  // trailing comments work too
+```
+
+### Identifiers
+
+An identifier starts with a letter or underscore and continues with letters,
+digits, or underscores: `[A-Za-z_][A-Za-z0-9_]*`.
+
+### Keywords
+
+The reserved words are:
+
+```
+fn   var   return   if   else   loop   struct   break   continue
+```
+
+Note that `print` and `printf` are **not** keywords — they are builtin function
+names recognized during analysis and code generation (see
+[The `print` and `printf` builtins](#the-print-and-printf-builtins)).
+
+### Numeric literals
+
+A numeric literal is a run of digits, optionally followed by a decimal point and
+more digits. Numbers are integers in practice: the type system reads only the
+integer part of a literal (see [Current limitations](#current-limitations) for the
+decimal-point caveat).
+
+```w
+0        42        255        1000000
+```
+
+### String literals
+
+A string literal is text enclosed in double quotes:
+
+```w
+"hello"
+```
+
+The lexer scans from the opening quote to the next `"`; there is **no escape-sequence
+processing**. An unterminated string is a lexical error.
+
+### Operators and punctuation
+
+| Category    | Tokens                                            |
+| ----------- | ------------------------------------------------- |
+| Arithmetic  | `+`  `-`  `*`  `/`  `%`                            |
+| Assignment  | `=`  `:=`  `+=`  `-=`  `*=`  `/=`                  |
+| Comparison  | `==`  `!=`  `<`  `>`  `<=`  `>=`                   |
+| Logical     | `&&`  `||`  `!`                                    |
+| Arrow       | `<-`  (function parameter arrow)                  |
+| Punctuation | `(` `)` `{` `}` `[` `]` `,` `;` `:` `.`           |
+
+`:=` is the *define* operator (inferred-type declaration). `<-` is a single token
+used in function signatures. A lone `&` or `|` (not doubled) is a lexical error —
+there are no bitwise operators.
+
+---
+
+## Types
+
+W has three families of types: sized integers, the string type, and user-defined
+structs. Arrays are formed from any of these with a fixed length.
+
+### Integer types
+
+| W type   | C type      | Width               |
+| -------- | ----------- | ------------------- |
+| `int8`   | `int8_t`    | 8-bit signed        |
+| `int16`  | `int16_t`   | 16-bit signed       |
+| `int32`  | `int32_t`   | 32-bit signed       |
+| `int64`  | `int64_t`   | 64-bit signed       |
+| `int128` | `__int128`  | 128-bit signed      |
+
+These form an ordered *rank*: `int8 < int16 < int32 < int64 < int128`. The rank
+drives inference, widening, and narrowing checks (see [The type system](#the-type-system)).
+
+### The string type
+
+| W type   | C type        |
+| -------- | ------------- |
+| `string` | `const char*` |
+
+A `string` maps to a C string pointer. Indexing a string yields a single byte,
+typed as `int8` (see [Strings](#strings)).
+
+### Arrays
+
+An array type is written `T[N]` — an element type followed by a fixed length in
+square brackets. `N` must be a numeric literal.
+
+```w
+int32[5]      // five 32-bit integers
+```
+
+Arrays translate to fixed-size C arrays.
+
+### Structs
+
+A struct is a named aggregate of fields, each field being any type (including
+another struct or an array). See [Structs](#structs).
+
+---
+
+## Declarations and bindings
+
+Every local binding is either **constant** or **mutable**, and either
+**type-inferred** or **explicitly typed**. That gives four spellings.
+
+```w
+name := expr;              // constant, type inferred
+var name := expr;          // mutable,  type inferred
+
+name: Type = expr;         // constant, explicit type
+var name: Type;            // mutable,  explicit type, may be left uninitialized
+var name: Type = expr;     // mutable,  explicit type, with initializer
+```
+
+The rule is simple: **a binding is constant unless it is introduced with `var`.**
+Assigning to a constant is a semantic error:
+
+```w
+x := 10;
+x = 20;      // error: assignment to const identifier
+```
+
+`:=` requires an initializer and infers the type from it. The `: Type` form gives
+the type explicitly; with `var` and an explicit type, the initializer is optional
+(the variable is declared but unset, just as in C).
+
+Every statement-level declaration ends with a semicolon.
+
+---
+
+## The type system
+
+Semantic analysis walks the AST after parsing. It resolves names, infers types,
+and enforces the language's few static rules.
+
+### Type inference
+
+When a declaration uses `:=`, the type is inferred from the initializer. For an
+integer literal, the inferred type is the **smallest signed integer type that can
+hold the value**:
+
+| Literal range              | Inferred type |
+| -------------------------- | ------------- |
+| −128 … 127                 | `int8`        |
+| −32768 … 32767             | `int16`       |
+| −2147483648 … 2147483647   | `int32`       |
+| beyond that                | `int64`       |
+
+So `x := 42` is an `int8`, while `y := 255` is an `int16` (255 exceeds the signed
+`int8` maximum of 127). A call's inferred type is the callee's declared return
+type; a binary expression's type is the *wider* of its two operands.
+
+### Widening and narrowing
+
+Assignments and typed declarations permit **widening** (assigning a narrower value
+into a wider slot) but reject **narrowing** (the reverse). Concretely, the value's
+type rank must be ≤ the target's rank:
+
+```w
+var wide: int64 = 5;     // ok: int8 literal widened into int64
+var narrow: int8 = 5000; // error: initializer type too wide for declared type
+```
+
+The same rule governs plain assignments, array-element assignments, struct-field
+assignments, and function-call arguments. `string` is treated as its own category:
+mixing a string with an integer in any of these positions is a type mismatch.
+
+### Constants and reassignment
+
+- A binding without `var` is constant; assigning to it is an error.
+- Function parameters are constant inside the function body.
+- Redeclaring a name already declared in the *same* scope is an error. Shadowing a
+  name from an *enclosing* scope is allowed.
+
+### Scopes
+
+Scopes form a chain. Each function body, block, `if` branch, and `loop` opens a new
+scope; name lookup walks outward through parent scopes. A loop's header (its init
+clause and induction variable) lives in a scope that encloses the loop body, so the
+body can see the loop variable while the variable stays invisible to the code
+around the loop.
+
+---
+
+## Functions
+
+A function declaration has the shape:
+
+```
+fn NAME: RETURN_TYPE <- (PARAMS) { BODY }
+```
+
+The return type comes right after the name (separated by `:`), then the `<-` arrow,
+then a parenthesized parameter list, then the body block. Each parameter is written
+`name: Type`.
+
+```w
+fn add: int128 <- (a: int64, b: int64) {
+    return a + b;
+}
+
+fn greet: int32 <- () {
+    print("hi");
+    return 0;
+}
+```
+
+Calls use ordinary parentheses. A call may be an expression or a statement (a
+statement call discards the return value):
+
+```w
+var s := add(1, 2);   // call in expression position
+greet();              // call as a statement
+```
+
+At a call site the analyzer checks that the argument count matches and that each
+argument's type is not wider than the corresponding parameter's type. All functions
+are visible to one another regardless of declaration order, because the analyzer
+registers every function before checking any body.
+
+> **Note:** the compiler does not currently check that a `return` expression's type
+> is compatible with the declared return type. See
+> [Current limitations](#current-limitations).
+
+---
+
+## Structs
+
+A struct groups named fields. Fields are separated by commas; each is `name: Type`.
+
+```w
+struct Point {
+    x: int32,
+    y: int32
+}
+```
+
+Declare a struct value with an explicit type, then assign its fields. Field access
+uses dot notation, and structs can nest:
+
+```w
+struct Line {
+    a: Point,
+    b: Point
+}
+
+fn main: int32 <- () {
+    var l: Line;
+    l.a.x = 3;
+    l.a.y = 4;
+    return l.a.x + l.a.y;   // 7
+}
+```
+
+Field access is type-checked: accessing a field on a non-struct value, or naming a
+field that doesn't exist, is a semantic error. Structs are first-class enough to be
+returned from functions and assigned whole:
+
+```w
+fn make_point: Point <- (x: int32, y: int32) {
+    var p: Point;
+    p.x = x;
+    p.y = y;
+    return p;
+}
+```
+
+Redeclaring a struct name is an error. Struct types may be referenced before they
+are declared in the file, since all structs are registered before any function is
+checked.
+
+---
+
+## Arrays
+
+Arrays are fixed-length and declared with `T[N]`:
+
+```w
+var arr: int32[5];
+arr[0] = 10;
+arr[1] = 20;
+var i := 2;
+arr[i] = arr[0] + arr[1];   // index with any integer expression
+return arr[0] + arr[1] + arr[2];
+```
+
+Indexing a value that is neither an array nor a string is a semantic error.
+Array-element assignment obeys the same widening/narrowing rule as any other
+assignment. Arrays can be struct fields and can be passed as parameters:
+
+```w
+fn sum3: int32 <- (arr: int32[3]) {
+    return arr[0] + arr[1] + arr[2];
+}
+```
+
+Field and index access chain freely, in either order:
+
+```w
+struct Pair { vals: int32[2] }
+
+// ...
+p.vals[0] = 3;      // index into a field
+p.vals[1] = 4;
+return p.vals[0] + p.vals[1];
+```
+
+---
+
+## Strings
+
+A `string` is an immutable text value backed by a C `const char*`. Indexing a
+string returns one byte as an `int8`:
+
+```w
+fn main: int32 <- () {
+    var s: string = "hi";
+    return s[0];   // 104, the byte value of 'h'
+}
+```
+
+Because `string` is its own type category, it never mixes with integers in
+assignments, declarations, or call arguments — doing so is a type mismatch.
+String literals have no escape processing.
+
+---
+
+## Expressions and operators
+
+Expressions are built from literals, identifiers, calls, field/index accesses, and
+the operators below. Precedence runs from lowest to highest as follows (each level
+is left-associative except unary, which is right-associative):
+
+| Level | Operators                         | Description               |
+| ----- | --------------------------------- | ------------------------- |
+| 1     | `||`                              | logical or                |
+| 2     | `&&`                              | logical and               |
+| 3     | `==` `!=` `<` `>` `<=` `>=`        | comparison                |
+| 4     | `+` `-`                           | additive                  |
+| 5     | `*` `/` `%`                       | multiplicative            |
+| 6     | `!` `-` (prefix)                  | unary not / negation      |
+| 7     | `.` `[]` and call `()`            | postfix access / call     |
+
+Parentheses group as usual. There is no boolean type: comparisons and logical
+operators produce integers, and any integer expression can serve as a condition.
+A binary arithmetic expression takes the wider of its operand types.
+
+```w
+var a := (1 + 2) * 3;      // 9
+var ok := a > 5 && a < 20; // integer result usable as a condition
+var neg := -a;             // unary negation
+var not := !0;             // logical not
+```
+
+---
+
+## Statements and control flow
+
+### Declarations and assignments
+
+Covered above: `:=` / `: Type` declarations, plain `=` assignment, and the compound
+assignments `+=`, `-=`, `*=`, `/=`. A compound assignment is desugared during
+parsing — `x += e` becomes `x = x + e` — so there is no separate compound-assignment
+node in the AST.
+
+### `if` / `else if` / `else`
+
+```w
+if (n < 0) {
+    return -1;
+} else if (n == 0) {
+    return 0;
+} else {
+    return 1;
+}
+```
+
+The condition is a parenthesized expression; each branch is a block. `else if`
+chains as many times as you like, with an optional final `else` block.
+
+### Loops
+
+There is one loop keyword with three forms.
+
+**Infinite** — no header at all:
+
+```w
+loop {
+    // runs forever until `break`
+    break;
+}
+```
+
+**Condition-only** (the "while" shape) — a single parenthesized expression:
+
+```w
+loop (i < 10) {
+    i += 1;
+}
+```
+
+**Three-clause** (the "for" shape) — init, condition, and step separated by
+semicolons:
+
+```w
+var sum := 0;
+loop (var i := 0; i < 10; i += 1) {
+    sum += i;
+}
+// sum == 45
+```
+
+The init clause may declare a fresh variable (with or without `var`) or assign an
+existing one; the step clause is an assignment or compound assignment. The parser
+distinguishes the three-clause form from the condition-only form by scanning ahead
+for a top-level `;` inside the loop header.
+
+### `break` and `continue`
+
+`break` exits the nearest enclosing loop; `continue` skips to its next iteration.
+Using either outside any loop is a semantic error. In three-clause loops,
+`continue` correctly runs the step clause, because such loops compile to a real C
+`for` (see below).
+
+### `return`
+
+`return` optionally takes an expression and ends the current function:
+
+```w
+return;          // no value
+return a + b;    // with a value
+```
+
+---
+
+## The `print` and `printf` builtins
+
+Both are builtins, not user functions. Since W has no `void` type, a call to
+either in expression position has a placeholder `int64` type — but they are
+almost always used as statements.
+
+### `print`
+
+`print` takes **one or more** arguments, each of which may be any integer type or
+a `string`. It writes the values back to back — no separators — followed by a
+single trailing newline. Calling it with zero arguments is a semantic error.
+
+```w
+print(42);                  // prints: 42
+print("hello");             // prints: hello
+print("x = ", 7, "!");      // prints: x = 7!
+```
+
+In the generated C, each argument is dispatched through the `w_print_val`
+`_Generic` macro so the right formatting is chosen for integers versus strings,
+and a final helper emits the newline. The whole call is one comma expression, so
+`print` stays usable in expression position.
+
+### `printf`
+
+`printf` is a C-like formatted print whose format string is **checked at compile
+time**. The first argument must be a string *literal* (not a variable); the
+remaining arguments must line up one-to-one with the format directives:
+
+| Directive | Matches                | Meaning                    |
+| --------- | ---------------------- | -------------------------- |
+| `%d`      | any integer type       | print the integer          |
+| `%s`      | `string`               | print the string           |
+| `%%`      | (consumes no argument) | a literal `%`              |
+
+```w
+printf("%s is %d years old", "Ada", 36);   // Ada is 36 years old
+printf("100%%");                            // 100%
+```
+
+Semantic analysis rejects: a non-literal format string, an unsupported directive
+(anything other than `%d`, `%s`, `%%`), a directive/argument type mismatch, and a
+directive count that disagrees with the argument count. Unlike `print`, `printf`
+appends **no** trailing newline.
+
+In the generated C, the call lowers onto C's own `printf`: every `%d` is rewritten
+to `%lld` with its argument cast to `long long` (W integers are up to 128 bits
+wide), and `%s` passes through unchanged.
+
+---
+
+## The compilation model
+
+`wlangc` is a transpiler: it lowers a W program to a single C translation unit. The
+mapping is direct and predictable.
+
+- **Preamble.** Every output begins with `#include <stdint.h>`, then a small
+  `print` support block (`#include <stdio.h>` plus three helpers and the
+  `w_print_val` `_Generic` macro).
+- **Types.** W integer types map to the `<stdint.h>` fixed-width types (`int8` →
+  `int8_t`, and so on); `int128` maps to the compiler builtin `__int128`; `string`
+  maps to `const char*`.
+- **Structs** become C `typedef struct { ... } Name;` definitions, emitted before
+  functions.
+- **Functions** become ordinary C functions. A zero-parameter function is emitted
+  with a `(void)` parameter list. Array parameters keep their `[N]` bounds.
+- **Declarations.** Constant bindings gain a `const` qualifier. An inferred
+  declaration is emitted with the type the analyzer computed for it.
+- **Loops.** A three-clause loop lowers to a C `for` loop, which is what makes
+  `continue` run the step clause. The other two forms lower to C `while` loops
+  (an infinite loop becomes `while (1)`).
+- **Expressions** are emitted fully parenthesized, so W's precedence is preserved
+  in the C output without relying on C's own precedence.
+
+For example, the three-clause loop above compiles to:
+
+```c
+int32_t main(void)
+{
+    int8_t sum = 0;
+    for (int8_t i = 0; (i < 10); i = (i + 1))
+    {
+        sum = (sum + i);
+    }
+    return sum;
+}
+```
+
+Because `main` becomes C's `main`, its return value is the process exit status.
+
+---
+
+## Using the compiler
+
+Build the compiler (see the README), then run:
+
+```sh
+./build/wlangc <input.w> [output.c]
+```
+
+The driver prints the parsed AST and a semantic-analysis result line to stdout,
+then emits the generated C — to `output.c` if you name one, otherwise to stdout. To
+produce a native binary, compile the emitted C with any C compiler:
+
+```sh
+./build/wlangc examples/hello.w hello.c
+cc hello.c -o hello
+./hello
+echo $?     # the exit status is main's return value
+```
+
+If parsing or semantic analysis fails, the compiler reports the error with a line
+number and exits without emitting C.
+
+---
+
+## Grammar reference
+
+The following EBNF mirrors the recursive-descent parser. Uppercase names are
+terminals produced by the lexer (`IDENT`, `NUM`, `STRING`); `?` marks optional
+parts, `*` repetition, and `|` alternatives.
+
+```ebnf
+program        = { func_decl | struct_decl } ;
+
+func_decl      = "fn" IDENT ":" type "<-" "(" [ params ] ")" block ;
+params         = param { "," param } ;
+param          = IDENT ":" type ;
+
+struct_decl    = "struct" IDENT "{" [ fields ] "}" ;
+fields         = field { "," field } ;
+field          = IDENT ":" type ;
+
+type           = IDENT [ "[" NUM "]" ] ;
+
+block          = "{" { stmt } "}" ;
+
+stmt           = var_decl
+               | assign_or_call
+               | if_stmt
+               | loop_stmt
+               | return_stmt
+               | "break" ";"
+               | "continue" ";" ;
+
+var_decl       = [ "var" ] IDENT ":=" expr ";"
+               | [ "var" ] IDENT ":" type [ "=" expr ] ";" ;
+
+assign_or_call = IDENT "(" [ args ] ")" ";"
+               | IDENT { "." IDENT | "[" expr "]" } "=" expr ";"
+               | IDENT "=" expr ";"
+               | IDENT ( "+=" | "-=" | "*=" | "/=" ) expr ";" ;
+
+if_stmt        = "if" "(" expr ")" block [ "else" ( if_stmt | block ) ] ;
+
+loop_stmt      = "loop" block
+               | "loop" "(" expr ")" block
+               | "loop" "(" loop_init ";" expr ";" loop_step ")" block ;
+loop_init      = [ "var" ] IDENT ":=" expr
+               | [ "var" ] IDENT ":" type [ "=" expr ]
+               | IDENT "=" expr ;
+loop_step      = IDENT ( "=" | "+=" | "-=" | "*=" | "/=" ) expr ;
+
+return_stmt    = "return" [ expr ] ";" ;
+
+expr           = logical_or ;
+logical_or     = logical_and { "||" logical_and } ;
+logical_and    = comparison { "&&" comparison } ;
+comparison     = additive { ( "==" | "!=" | "<" | ">" | "<=" | ">=" ) additive } ;
+additive       = term { ( "+" | "-" ) term } ;
+term           = unary { ( "*" | "/" | "%" ) unary } ;
+unary          = ( "!" | "-" ) unary | primary ;
+primary        = primary_base { "." IDENT | "[" expr "]" } ;
+primary_base   = IDENT
+               | IDENT "(" [ args ] ")"
+               | NUM
+               | STRING
+               | "(" expr ")" ;
+args           = expr { "," expr } ;
+```
+
+---
+
+## Current limitations
+
+These are honest gaps in the current implementation, drawn from the source itself.
+They are the natural places to contribute.
+
+- **No floating-point type.** The lexer accepts a decimal point in a numeric
+  literal, and the code generator passes the literal text through to C verbatim,
+  but the type system reads only the integer part when inferring a type. As a
+  result `3.14` is typed as `int8`. Treat all numbers as integers for now.
+- **No return-type check.** A `return` expression is analyzed, but its type is not
+  compared against the function's declared return type, so a too-wide value can be
+  returned without a diagnostic.
+- **Large literals overflow silently.** Integer literals beyond the `int64` range
+  are parsed with a 64-bit accumulator during inference, so an `int128`-sized
+  literal will wrap around rather than be typed as `int128`.
+- **No boolean type.** Conditions are ordinary integer expressions; comparison and
+  logical operators yield integers.
+- **No escape sequences in strings.** A string literal is the raw bytes between the
+  quotes; sequences like `\n` are not interpreted.
+- **No bitwise operators.** A single `&` or `|` is a lexical error; only `&&` and
+  `||` exist.
+- **Single file, no modules or imports.** A program is one source file of top-level
+  `fn` and `struct` declarations; there are no global variables.
