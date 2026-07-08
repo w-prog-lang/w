@@ -58,6 +58,50 @@ static const char* binop_str(TokenKind op) {
     }
 }
 
+static void emit_expr(FILE* out, Node* n);
+
+// lowers the printf() builtin onto C's printf: sema has already validated
+// the format literal, so every %d can be rewritten to %lld with its
+// argument cast to long long (W integers are up to int128 wide)
+static void emit_printf_call(FILE* out, Node* n) {
+    const char* text = n->as.call.args[0]->as.str.text;
+    int len = n->as.call.args[0]->as.str.len;
+
+    fprintf(out, "printf(\"");
+    for (int i = 0; i < len; i++) {
+        if (text[i] == '%' && i + 1 < len) {
+            if (text[i + 1] == 'd') {
+                fputs("%lld", out);
+            } else {
+                fputc('%', out);
+                fputc(text[i + 1], out);
+            }
+            i++;
+            continue;
+        }
+        fputc(text[i], out);
+    }
+    fprintf(out, "\"");
+
+    int next_arg = 1;
+    for (int i = 0; i + 1 < len; i++) {
+        if (text[i] != '%') continue;
+        char d = text[i + 1];
+        i++;
+        if (d == '%') continue;
+        fprintf(out, ", ");
+        if (d == 'd') {
+            fprintf(out, "(long long)(");
+            emit_expr(out, n->as.call.args[next_arg]);
+            fprintf(out, ")");
+        } else {
+            emit_expr(out, n->as.call.args[next_arg]);
+        }
+        next_arg++;
+    }
+    fprintf(out, ")");
+}
+
 static void emit_expr(FILE* out, Node* n) {
     switch (n->kind) {
         case NODE_NUM:
@@ -96,6 +140,11 @@ static void emit_expr(FILE* out, Node* n) {
                     fprintf(out, "), ");
                 }
                 fprintf(out, "w_print_nl())");
+                break;
+            }
+            if (n->as.call.name_len == 6 &&
+                strncmp(n->as.call.name, "printf", 6) == 0) {
+                emit_printf_call(out, n);
                 break;
             }
             fprintf(out, "%.*s(", n->as.call.name_len, n->as.call.name);

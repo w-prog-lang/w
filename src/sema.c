@@ -300,6 +300,71 @@ static Node* find_root_ident(Node* n) {
     return n;
 }
 
+static TypeRef infer_expr(Sema* s, Node* n);
+
+// validates a printf() builtin call: the first argument must be a string
+// literal, and its %d/%s directives must line up one-to-one with the types
+// of the remaining arguments ('%%' is a literal percent)
+static void check_printf(Sema* s, Node* n) {
+    if (n->as.call.arg_count < 1) {
+        fprintf(stderr,
+                "sema error at line %d: 'printf' expects a format string\n",
+                n->line);
+        s->had_error = 1;
+        return;
+    }
+
+    Node* fmt = n->as.call.args[0];
+    if (fmt->kind != NODE_STRING) {
+        error(s, n->line, "printf format must be a string literal", "printf",
+              6);
+        for (int i = 1; i < n->as.call.arg_count; i++) {
+            infer_expr(s, n->as.call.args[i]);
+        }
+        return;
+    }
+
+    const char* text = fmt->as.str.text;
+    int len = fmt->as.str.len;
+    int next_arg = 1;
+
+    for (int i = 0; i < len; i++) {
+        if (text[i] != '%') continue;
+        if (i + 1 >= len) {
+            error(s, n->line, "incomplete format directive at end of string",
+                  "%", 1);
+            break;
+        }
+        char d = text[++i];
+        if (d == '%') continue;
+        if (d != 'd' && d != 's') {
+            error(s, n->line, "unsupported format directive", &text[i - 1], 2);
+            continue;
+        }
+        if (next_arg < n->as.call.arg_count) {
+            TypeRef arg_type = infer_expr(s, n->as.call.args[next_arg]);
+            if ((d == 's') != is_string_type(arg_type)) {
+                error(s, n->line,
+                      "format directive does not match argument type",
+                      &text[i - 1], 2);
+            }
+        }
+        next_arg++;
+    }
+
+    if (next_arg != n->as.call.arg_count) {
+        fprintf(stderr,
+                "sema error at line %d: format string expects %d value args, "
+                "got %d\n",
+                n->line, next_arg - 1, n->as.call.arg_count - 1);
+        s->had_error = 1;
+        // still check any surplus args for undeclared identifiers
+        for (int i = next_arg; i < n->as.call.arg_count; i++) {
+            infer_expr(s, n->as.call.args[i]);
+        }
+    }
+}
+
 // evaluates an expression: performs existing checks (undeclared name/call,
 // arg count) AND returns its inferred type
 static TypeRef infer_expr(Sema* s, Node* n) {
@@ -350,10 +415,11 @@ static TypeRef infer_expr(Sema* s, Node* n) {
         }
 
         case NODE_CALL: {
-            // "print" is a builtin, not a user-declarable function: it takes
-            // one or more arguments of any printable type and writes them
-            // back to back, followed by a newline; its result (if used) is a
-            // placeholder int64 since the language has no void type
+            // "print" and "printf" are builtins, not user-declarable
+            // functions; their result (if used) is a placeholder int64 since
+            // the language has no void type. print takes one or more
+            // arguments of any printable type and writes them back to back,
+            // followed by a newline
             if (n->as.call.name_len == 5 &&
                 strncmp(n->as.call.name, "print", 5) == 0) {
                 if (n->as.call.arg_count < 1) {
@@ -366,6 +432,12 @@ static TypeRef infer_expr(Sema* s, Node* n) {
                 for (int i = 0; i < n->as.call.arg_count; i++) {
                     infer_expr(s, n->as.call.args[i]);
                 }
+                return type_int64();
+            }
+
+            if (n->as.call.name_len == 6 &&
+                strncmp(n->as.call.name, "printf", 6) == 0) {
+                check_printf(s, n);
                 return type_int64();
             }
 
