@@ -9,8 +9,8 @@ trap 'rm -rf "$TMPDIR"' EXIT
 pass=0
 fail=0
 
-for src in "$CASES_DIR"/*.wsrc; do
-    name=$(basename "$src" .wsrc)
+for src in "$CASES_DIR"/*.wlang; do
+    name=$(basename "$src" .wlang)
     expect_file="$CASES_DIR/$name.expect"
 
     if [ ! -f "$expect_file" ]; then

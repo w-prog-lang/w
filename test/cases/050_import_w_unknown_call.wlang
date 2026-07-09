@@ -1,0 +1,6 @@
+// a '.wlang' import alone must NOT unlock unchecked calls -- only '.h' does
+#import <libs/mathlib.wlang>
+
+fn main: int32 <- () {
+    return nosuch(1);
+}

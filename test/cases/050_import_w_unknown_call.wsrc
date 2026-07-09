@@ -1,6 +1,0 @@
-// a '.wsrc' import alone must NOT unlock unchecked calls -- only '.h' does
-#import <libs/mathlib.wsrc>
-
-fn main: int32 <- () {
-    return nosuch(1);
-}

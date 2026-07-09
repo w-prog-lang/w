@@ -162,7 +162,7 @@ angle-bracketed path — into a single token whose text is the raw path between
 See [Imports](#imports) for its meaning.
 
 ```w
-#import <mathlib.wsrc>
+#import <mathlib.wlang>
 #import <string.h>
 ```
 
@@ -605,7 +605,7 @@ A file pulls in other code with the `#import` directive. The path is written
 between angle brackets, and its extension selects one of two behaviors:
 
 ```w
-#import <mathlib.wsrc>  // a W library: parsed and merged into the program
+#import <mathlib.wlang>  // a W library: parsed and merged into the program
 #import <string.h>      // a C header: passed through as #include <string.h>
 ```
 
@@ -613,16 +613,16 @@ Any other extension is a parse error. Imports are conventionally written at the
 top of the file, but the parser accepts them anywhere a top-level declaration is
 legal.
 
-### W libraries (`.wsrc`)
+### W libraries (`.wlang`)
 
-A W library is just an ordinary `.wsrc` file of `fn` and `struct` declarations (and
+A W library is just an ordinary `.wlang` file of `fn` and `struct` declarations (and
 possibly further imports). Importing it reads, parses, and merges its
 declarations into the importing program, as if everything had been written in
 one file; the merged declarations are type-checked together with the rest of the
 program.
 
 - Paths are resolved **relative to the directory of the importing file**: a
-  library in a subdirectory is imported as `#import <libs/mathlib.wsrc>`, while a
+  library in a subdirectory is imported as `#import <libs/mathlib.wlang>`, while a
   library importing a sibling in its own directory names it directly.
 - Each file is merged **at most once** per compilation, however many import
   paths lead to it — the diamond pattern is fine, and a circular import is
@@ -704,7 +704,7 @@ Because `main` becomes C's `main`, its return value is the process exit status.
 Build the compiler (see the README), then run:
 
 ```sh
-./build/wlangc <input.wsrc> [output.c]
+./build/wlangc <input.wlang> [output.c]
 ```
 
 The driver prints the parsed AST and a semantic-analysis result line to stdout,
@@ -712,7 +712,7 @@ then emits the generated C — to `output.c` if you name one, otherwise to stdou
 produce a native binary, compile the emitted C with any C compiler:
 
 ```sh
-./build/wlangc examples/hello.wsrc hello.c
+./build/wlangc examples/hello.wlang hello.c
 cc hello.c -o hello
 ./hello
 echo $?     # the exit status is main's return value
@@ -737,7 +737,7 @@ program        = { import_decl | func_decl | struct_decl } ;
 import_decl    = "#import" "<" PATH ">" ;
                  (* the lexer folds the whole directive into one token;
                     PATH is raw text up to the closing '>' and must end
-                    in ".wsrc" or ".h" *)
+                    in ".wlang" or ".h" *)
 
 func_decl      = "fn" IDENT ":" type "<-" "(" [ params ] ")" block ;
 params         = param { "," param } ;
@@ -818,7 +818,7 @@ They are the natural places to contribute.
   quotes; sequences like `\n` are not interpreted.
 - **No bitwise operators.** A single `&` or `|` is a lexical error; only `&&` and
   `||` exist.
-- **Imports share one flat namespace.** `#import <lib.wsrc>` merges the library's
+- **Imports share one flat namespace.** `#import <lib.wlang>` merges the library's
   declarations directly into the program — there is no qualification or
   renaming, so a name collision across files is a redefinition error.
   Diagnostics report line numbers only, not file names, so an error inside an

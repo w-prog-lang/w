@@ -1,4 +1,4 @@
-#import <libs/mathlib.wsrc>
+#import <libs/mathlib.wlang>
 
 fn main: int32 <- () {
     return square(6);
