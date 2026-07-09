@@ -18,7 +18,7 @@ character:
   fits it*.
 - **A distinct function arrow.** Functions are written
   `fn name: ReturnType <- (params) { ... }`.
-- **Source-level imports.** `#import <lib.w>` merges another W file into the
+- **Source-level imports.** `#import <lib.wsrc>` merges another W file into the
   program; `#import <lib.h>` passes a C header through to the generated C, so
   W code can call into the C world.
 
@@ -66,10 +66,10 @@ There are no third-party dependencies.
 ## Using the compiler
 
 ```sh
-./build/wlangc <input.w> [output.c]
+./build/wlangc <input.wsrc> [output.c]
 ```
 
-`wlangc` reads a `.w` source file, then:
+`wlangc` reads a `.wsrc` source file, then:
 
 1. resolves its `#import`s (W libraries are parsed and merged in),
 2. prints the parsed AST to stdout (a debugging dump),
@@ -80,7 +80,7 @@ There are no third-party dependencies.
 To go all the way to a runnable program, hand the generated C to any C compiler:
 
 ```sh
-./build/wlangc examples/hello.w hello.c
+./build/wlangc examples/hello.wsrc hello.c
 cc hello.c -o hello
 ./hello
 ```
@@ -92,7 +92,7 @@ make test
 ```
 
 This runs `test/run_tests.sh` against every case in `test/cases/`. Each case pairs
-a `.w` source with a `.expect` file describing the expected outcome. The runner
+a `.wsrc` source with a `.expect` file describing the expected outcome. The runner
 understands five expectation formats:
 
 | Format                       | Meaning                                                     |
@@ -116,9 +116,9 @@ src/
   codegen.{h,c}   C transpiler
   util.{h,c}      arena allocator + PtrList dynamic array
   main.c          CLI driver and AST pretty-printer
-examples/         sample .w programs
+examples/         sample .wsrc programs
 test/
-  cases/          .w sources paired with .expect (and .stdout) files
+  cases/          .wsrc sources paired with .expect (and .stdout) files
   run_tests.sh    end-to-end test runner
 LANGUAGE.md       the full language guide
 ```

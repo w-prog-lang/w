@@ -10,7 +10,7 @@ typedef struct {
     Node* root;
     Arena* arena;
     PtrList* buffers;  // owned source buffers of imported files
-    PtrList visited;   // resolved paths of '.w' files already merged
+    PtrList visited;   // resolved paths of '.wsrc' files already merged
     int had_error;
 } Importer;
 
@@ -144,7 +144,7 @@ int imports_resolve(Node* program, const char* main_path, Arena* arena,
     process_program(&im, program, dir_of(&im, main_path), &c_includes);
 
     // after resolution the import list holds only the C headers codegen must
-    // emit -- every '.w' import has been merged away
+    // emit -- every '.wsrc' import has been merged away
     free(program->as.program.imports.items);
     program->as.program.imports = c_includes;
 

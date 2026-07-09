@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static void advance(Parser* p) {
     p->prev = p->cur;
@@ -812,8 +813,8 @@ static Node* parse_import_decl(Parser* p) {
     int len = p->cur.len;
     if (len >= 2 && path[len - 2] == '.' && path[len - 1] == 'h') {
         n->as.import.is_c = 1;
-    } else if (!(len >= 2 && path[len - 2] == '.' && path[len - 1] == 'w')) {
-        error_at(p, p->cur, "import path must end in '.w' or '.h'");
+    } else if (!(len >= 5 && strncmp(path + len - 5, ".wsrc", 5) == 0)) {
+        error_at(p, p->cur, "import path must end in '.wsrc' or '.h'");
     }
 
     advance(p);

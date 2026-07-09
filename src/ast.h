@@ -58,7 +58,7 @@ struct Node {
         struct {
             const char* path;
             int path_len;
-            int is_c;  // 1 for a '.h' C header, 0 for a '.w' W library
+            int is_c;  // 1 for a '.h' C header, 0 for a '.wsrc' W library
         } import;
 
         struct {

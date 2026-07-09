@@ -1,4 +1,4 @@
-#import <libs/does_not_exist.w>
+#import <libs/does_not_exist.wsrc>
 
 fn main: int32 <- () {
     return 0;

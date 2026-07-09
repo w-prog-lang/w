@@ -436,7 +436,7 @@ static void emit_print_preamble(FILE* out) {
 
 void codegen_emit(Node* program, FILE* out) {
     fprintf(out, "#include <stdint.h>\n");
-    // one #include per imported C header ('.w' imports were merged into the
+    // one #include per imported C header ('.wsrc' imports were merged into the
     // program during import resolution and emit nothing here)
     for (int i = 0; i < program->as.program.imports.count; i++) {
         Node* imp = (Node*)program->as.program.imports.items[i];

@@ -9,8 +9,8 @@ trap 'rm -rf "$TMPDIR"' EXIT
 pass=0
 fail=0
 
-for src in "$CASES_DIR"/*.w; do
-    name=$(basename "$src" .w)
+for src in "$CASES_DIR"/*.wsrc; do
+    name=$(basename "$src" .wsrc)
     expect_file="$CASES_DIR/$name.expect"
 
     if [ ! -f "$expect_file" ]; then
