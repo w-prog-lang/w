@@ -1,0 +1,4 @@
+fn main: int32 <- () {
+    x := 99999999999999999999;  // exceeds int64 max
+    return 0;
+}

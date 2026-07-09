@@ -263,7 +263,11 @@ hold the value**:
 | −128 … 127                 | `int8`        |
 | −32768 … 32767             | `int16`       |
 | −2147483648 … 2147483647   | `int32`       |
-| beyond that                | `int64`       |
+| up to 9223372036854775807  | `int64`       |
+
+A literal beyond the `int64` maximum is a semantic error: C has no literal
+syntax wide enough for `int128`, so `int128` values must be computed (for
+example by shifting) rather than written out.
 
 So `x := 42` is an `int8`, while `y := 255` is an `int16` (255 exceeds the signed
 `int8` maximum of 127). A call's inferred type is the callee's declared return
@@ -822,9 +826,6 @@ They are the natural places to contribute.
 - **No return-type check.** A `return` expression is analyzed, but its type is not
   compared against the function's declared return type, so a too-wide value can be
   returned without a diagnostic.
-- **Large literals overflow silently.** Integer literals beyond the `int64` range
-  are parsed with a 64-bit accumulator during inference, so an `int128`-sized
-  literal will wrap around rather than be typed as `int128`.
 - **No boolean type.** Conditions are ordinary integer expressions; comparison and
   logical operators yield integers.
 - **Imports share one flat namespace.** `#import <lib.wlang>` merges the library's

@@ -136,12 +136,12 @@ structs, fixed-size arrays, strings, integer arithmetic, the full set of
 comparison, logical, and bitwise operators, `if`/`else if`/`else`, all three
 `loop` forms, `break`/`continue`, compound assignment, a variadic `print`
 builtin, a C-like `printf` builtin whose format string is checked at compile
-time, and `#import` of both W libraries and C headers. All 56 test cases pass.
+time, and `#import` of both W libraries and C headers. All 58 test cases pass.
 
 Known gaps, described in the guide's *Current limitations* section, include the
-absence of a floating-point type, the lack of a return-type compatibility check,
-and integer literals beyond the `int64` range. Contributions are grounded in the
-source first: read the relevant stage before changing it.
+absence of a floating-point type and the lack of a return-type compatibility
+check. Contributions are grounded in the source first: read the relevant stage
+before changing it.
 
 ## License
 

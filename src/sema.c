@@ -1,5 +1,6 @@
 #include "sema.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -132,24 +133,6 @@ static TypeRef smallest_type_for_value(long long value) {
     if (value >= -32768 && value <= 32767) return type_int16();
     if (value >= -2147483648LL && value <= 2147483647LL) return type_int32();
     return type_int64();
-    // NOTE: literals beyond int64 range (needing int128) are not handled
-    // yet -- parse_int_literal below uses long long, so extremely large
-    // literals will silently overflow. Flagging as a known gap.
-}
-
-static long long parse_int_literal(const char* text, int len) {
-    long long value = 0;
-    int neg = 0;
-    int i = 0;
-    if (len > 0 && text[0] == '-') {
-        neg = 1;
-        i = 1;
-    }
-    for (; i < len; i++) {
-        if (text[i] < '0' || text[i] > '9') break;  // stop at '.' etc.
-        value = value * 10 + (text[i] - '0');
-    }
-    return neg ? -value : value;
 }
 
 static void error(Sema* s, int line, const char* msg, const char* name,
@@ -157,6 +140,25 @@ static void error(Sema* s, int line, const char* msg, const char* name,
     fprintf(stderr, "sema error at line %d: %s: '%.*s'\n", line, msg, len,
             name);
     s->had_error = 1;
+}
+
+// parses the digits of an integer literal (the lexer never emits a sign).
+// a literal must fit int64: C offers no literal syntax wide enough for
+// int128, so such values have to be computed rather than written
+static long long parse_int_literal(Sema* s, int line, const char* text,
+                                   int len) {
+    long long value = 0;
+    for (int i = 0; i < len; i++) {
+        if (text[i] < '0' || text[i] > '9') break;  // stop at '.' etc.
+        int digit = text[i] - '0';
+        if (value > (LLONG_MAX - digit) / 10) {
+            error(s, line, "integer literal exceeds the int64 range", text,
+                  len);
+            return 0;
+        }
+        value = value * 10 + digit;
+    }
+    return value;
 }
 
 static Scope* scope_push(Scope* parent) {
@@ -397,7 +399,7 @@ static TypeRef infer_expr(Sema* s, Node* n) {
     switch (n->kind) {
         case NODE_NUM:
             return smallest_type_for_value(
-                parse_int_literal(n->as.num.text, n->as.num.len));
+                parse_int_literal(s, n->line, n->as.num.text, n->as.num.len));
 
         case NODE_IDENT: {
             Symbol* sym =
