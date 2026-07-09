@@ -25,6 +25,7 @@ typedef enum {
     NODE_CALL,
     NODE_IDENT,
     NODE_NUM,
+    NODE_BOOL,
     NODE_STRING,
     NODE_INDEX,
     NODE_INDEX_ASSIGN,
@@ -125,6 +126,10 @@ struct Node {
             const char* text;
             int len;
         } num;
+
+        struct {
+            int value;  // 1 for 'true', 0 for 'false'
+        } boolean;
 
         struct {
             const char* text;

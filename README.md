@@ -132,15 +132,16 @@ semantic rules, the C translation model, and a full grammar — lives in
 ## Status
 
 The pipeline compiles a working subset of the language end to end: functions,
-structs, fixed-size arrays, strings, integer arithmetic, the full set of
-comparison, logical, and bitwise operators, `if`/`else if`/`else`, all three
-`loop` forms, `break`/`continue`, compound assignment, a variadic `print`
-builtin, a C-like `printf` builtin whose format string is checked at compile
-time, and `#import` of both W libraries and C headers. All 61 test cases pass.
+structs, fixed-size arrays, strings, a `bool` type, integer arithmetic, the
+full set of comparison, logical, and bitwise operators, `if`/`else if`/`else`,
+all three `loop` forms, `break`/`continue`, compound assignment, a variadic
+`print` builtin, a C-like `printf` builtin whose format string is checked at
+compile time, and `#import` of both W libraries and C headers. All 63 test
+cases pass.
 
-Known gaps, described in the guide's *Current limitations* section, include the
-absence of a floating-point type and of a boolean type. Contributions are
-grounded in the source first: read the relevant stage before changing it.
+Known gaps, described in the guide's *Current limitations* section, include
+the absence of a floating-point type. Contributions are grounded in the
+source first: read the relevant stage before changing it.
 
 ## License
 

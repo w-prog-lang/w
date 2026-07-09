@@ -109,7 +109,7 @@ digits, or underscores: `[A-Za-z_][A-Za-z0-9_]*`.
 The reserved words are:
 
 ```
-fn   var   return   if   else   loop   struct   break   continue
+fn   var   return   if   else   loop   struct   break   continue   true   false
 ```
 
 Note that `print` and `printf` are **not** keywords — they are builtin function
@@ -174,8 +174,8 @@ See [Imports](#imports) for its meaning.
 
 ## Types
 
-W has three families of types: sized integers, the string type, and user-defined
-structs. Arrays are formed from any of these with a fixed length.
+W has four families of types: `bool`, sized integers, the string type, and
+user-defined structs. Arrays are formed from any of these with a fixed length.
 
 ### Integer types
 
@@ -189,6 +189,17 @@ structs. Arrays are formed from any of these with a fixed length.
 
 These form an ordered *rank*: `int8 < int16 < int32 < int64 < int128`. The rank
 drives inference, widening, and narrowing checks (see [The type system](#the-type-system)).
+
+### The bool type
+
+| W type | C type              |
+| ------ | ------------------- |
+| `bool` | `bool` (`<stdbool.h>`) |
+
+`bool` has two literals, `true` and `false`. Comparison and logical operators
+yield `bool`. It sits *below* `int8` in the rank order, so a `bool` widens into
+any integer type, but no integer narrows into a `bool` — `b: bool = 5` is an
+error. Conditions accept either a `bool` or any integer expression.
 
 ### The string type
 
@@ -471,9 +482,9 @@ is left-associative except unary, which is right-associative):
 | 6     | `!` `-` `~` (prefix)              | unary not / negation / complement |
 | 7     | `.` `[]` and call `()`            | postfix access / call     |
 
-Parentheses group as usual. There is no boolean type: comparisons and logical
-operators produce integers, and any integer expression can serve as a condition.
-A binary arithmetic expression takes the wider of its operand types.
+Parentheses group as usual. Comparisons, `&&`/`||`, and `!` produce a `bool`;
+a condition may be a `bool` or any integer expression. A binary arithmetic
+expression takes the wider of its operand types.
 
 W places the bitwise operators where Go does, not where C does: `&` and the
 shifts bind like `*`, while `|` and `^` bind like `+`, and all of them bind
@@ -483,9 +494,9 @@ fully parenthesized, so C's own precedence never leaks through.
 
 ```w
 var a := (1 + 2) * 3;      // 9
-var ok := a > 5 && a < 20; // integer result usable as a condition
+var ok := a > 5 && a < 20; // bool
 var neg := -a;             // unary negation
-var not := !0;             // logical not
+var not := !false;         // logical not -> bool
 var msk := a & 7 | 16;     // (a & 7) | 16
 var inv := ~a;             // bitwise complement
 ```
@@ -684,13 +695,13 @@ fn main: int32 <- () {
 `wlangc` is a transpiler: it lowers a W program to a single C translation unit. The
 mapping is direct and predictable.
 
-- **Preamble.** Every output begins with `#include <stdint.h>` and one
-  `#include <...>` per imported C header, then a small `print` support block
-  (`#include <stdio.h>` plus three helpers and the `w_print_val` `_Generic`
-  macro).
+- **Preamble.** Every output begins with `#include <stdbool.h>`,
+  `#include <stdint.h>`, and one `#include <...>` per imported C header, then a
+  small `print` support block (`#include <stdio.h>` plus three helpers and the
+  `w_print_val` `_Generic` macro).
 - **Types.** W integer types map to the `<stdint.h>` fixed-width types (`int8` →
-  `int8_t`, and so on); `int128` maps to the compiler builtin `__int128`; `string`
-  maps to `const char*`.
+  `int8_t`, and so on); `int128` maps to the compiler builtin `__int128`; `bool`
+  maps to C's `bool`; `string` maps to `const char*`.
 - **Structs** become C `typedef struct { ... } Name;` definitions, emitted before
   functions.
 - **Functions** become ordinary C functions. Every function except `main` is
@@ -815,6 +826,7 @@ primary        = primary_base { "." IDENT | "[" expr "]" } ;
 primary_base   = IDENT
                | IDENT "(" [ args ] ")"
                | NUM
+               | "true" | "false"
                | STRING
                | "(" expr ")" ;
 args           = expr { "," expr } ;
@@ -831,8 +843,6 @@ They are the natural places to contribute.
   literal, and the code generator passes the literal text through to C verbatim,
   but the type system reads only the integer part when inferring a type. As a
   result `3.14` is typed as `int8`. Treat all numbers as integers for now.
-- **No boolean type.** Conditions are ordinary integer expressions; comparison and
-  logical operators yield integers.
 - **Imports share one flat namespace.** `#import <lib.wlang>` merges the library's
   declarations directly into the program — there is no qualification or
   renaming, so a name collision across files is a redefinition error.

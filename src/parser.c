@@ -103,6 +103,13 @@ static Node* parse_primary_base(Parser* p) {
         return n;
     }
 
+    if (check(p, TOK_KW_TRUE) || check(p, TOK_KW_FALSE)) {
+        Node* n = ast_new(p->arena, NODE_BOOL, line);
+        n->as.boolean.value = check(p, TOK_KW_TRUE);
+        advance(p);
+        return n;
+    }
+
     if (check(p, TOK_STRING)) {
         Node* n = ast_new(p->arena, NODE_STRING, line);
         n->as.str.text = p->cur.start;

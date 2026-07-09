@@ -50,6 +50,7 @@ typedef struct {
 } Sema;
 
 // synthetic TypeRef constants used for inferred literal types
+static const char TY_BOOL[] = "bool";
 static const char TY_INT8[] = "int8";
 static const char TY_INT16[] = "int16";
 static const char TY_INT32[] = "int32";
@@ -57,6 +58,10 @@ static const char TY_INT64[] = "int64";
 static const char TY_INT128[] = "int128";
 static const char TY_STRING[] = "string";
 
+static TypeRef type_bool(void) {
+    TypeRef t = {TY_BOOL, 4, 0, 0};
+    return t;
+}
 static TypeRef type_int8(void) {
     TypeRef t = {TY_INT8, 4, 0, 0};
     return t;
@@ -113,6 +118,9 @@ static TypeRef element_type_of(TypeRef t) {
 
 static int type_rank(TypeRef t) {
     if (t.name == NULL) return 3;  // unknown -> treat as int64
+    // bool ranks below every integer: it widens into any of them, but no
+    // integer narrows into it
+    if (t.len == 4 && strncmp(t.name, "bool", 4) == 0) return -1;
     if (t.len == 4 && strncmp(t.name, "int8", 4) == 0) return 0;
     if (t.len == 5 && strncmp(t.name, "int16", 5) == 0) return 1;
     if (t.len == 5 && strncmp(t.name, "int32", 5) == 0) return 2;
@@ -123,6 +131,8 @@ static int type_rank(TypeRef t) {
 
 static TypeRef type_from_rank(int rank) {
     switch (rank) {
+        case -1:
+            return type_bool();
         case 0:
             return type_int8();
         case 1:
@@ -279,6 +289,7 @@ static StructInfo* lookup_struct(Sema* s, const char* name, int len) {
 // is `t` a builtin scalar type, "string", or a declared struct name?
 static int is_known_type_name(Sema* s, TypeRef t) {
     if (t.name == NULL) return 1;  // inferred; nothing to validate
+    if (t.len == 4 && strncmp(t.name, "bool", 4) == 0) return 1;
     if (t.len == 4 && strncmp(t.name, "int8", 4) == 0) return 1;
     if (t.len == 5 && strncmp(t.name, "int16", 5) == 0) return 1;
     if (t.len == 5 && strncmp(t.name, "int32", 5) == 0) return 1;
@@ -430,11 +441,30 @@ static TypeRef infer_expr(Sema* s, Node* n) {
         case NODE_BINOP: {
             TypeRef lt = infer_expr(s, n->as.binop.left);
             TypeRef rt = infer_expr(s, n->as.binop.right);
-            return widen(lt, rt);
+            switch (n->as.binop.op) {
+                case TOK_EQ:
+                case TOK_NEQ:
+                case TOK_LT:
+                case TOK_GT:
+                case TOK_LE:
+                case TOK_GE:
+                case TOK_AND_AND:
+                case TOK_OR_OR:
+                    return type_bool();
+                default:
+                    return widen(lt, rt);
+            }
         }
 
         case NODE_UNARY:
+            if (n->as.unary.op == TOK_BANG) {
+                infer_expr(s, n->as.unary.operand);
+                return type_bool();
+            }
             return infer_expr(s, n->as.unary.operand);
+
+        case NODE_BOOL:
+            return type_bool();
 
         case NODE_STRING:
             check_string_escapes(s, n);

@@ -7,7 +7,9 @@ static void emit_indent(FILE* out, int depth) {
 }
 
 static void emit_c_type(FILE* out, TypeRef t) {
-    if (t.len == 4 && strncmp(t.name, "int8", 4) == 0) {
+    if (t.len == 4 && strncmp(t.name, "bool", 4) == 0) {
+        fprintf(out, "bool");
+    } else if (t.len == 4 && strncmp(t.name, "int8", 4) == 0) {
         fprintf(out, "int8_t");
     } else if (t.len == 5 && strncmp(t.name, "int16", 5) == 0) {
         fprintf(out, "int16_t");
@@ -127,6 +129,10 @@ static void emit_expr(FILE* out, Node* n) {
     switch (n->kind) {
         case NODE_NUM:
             fprintf(out, "%.*s", n->as.num.len, n->as.num.text);
+            break;
+
+        case NODE_BOOL:
+            fprintf(out, "%s", n->as.boolean.value ? "true" : "false");
             break;
 
         case NODE_IDENT:
@@ -456,6 +462,7 @@ static void emit_print_preamble(FILE* out) {
 }
 
 void codegen_emit(Node* program, FILE* out) {
+    fprintf(out, "#include <stdbool.h>\n");
     fprintf(out, "#include <stdint.h>\n");
     // one #include per imported C header ('.wlang' imports were merged into the
     // program during import resolution and emit nothing here)

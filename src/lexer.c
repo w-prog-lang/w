@@ -12,6 +12,7 @@ static const Keyword keywords[] = {
     {"fn", TOK_KW_FN},         {"var", TOK_KW_VAR},       {"return", TOK_KW_RETURN},
     {"if", TOK_KW_IF},         {"else", TOK_KW_ELSE},     {"loop", TOK_KW_LOOP},
     {"struct", TOK_KW_STRUCT}, {"break", TOK_KW_BREAK},   {"continue", TOK_KW_CONTINUE},
+    {"true", TOK_KW_TRUE},     {"false", TOK_KW_FALSE},
 };
 
 void lexer_init(Lexer* lx, const char* src, size_t len) {
@@ -296,7 +297,8 @@ const char* token_kind_name(TokenKind kind) {
     static const char* names[] = {
         "EOF",      "IDENT",       "NUM",          "STRING",   "FN",
         "VAR",      "RETURN",      "IF",           "ELSE",     "LOOP",
-        "STRUCT",   "BREAK",       "CONTINUE",     "PLUS",     "MINUS",
+        "STRUCT",   "BREAK",       "CONTINUE",     "TRUE",     "FALSE",
+        "PLUS",     "MINUS",
         "STAR",     "SLASH",       "PERCENT",      "ASSIGN",   "DEFINE",
         "ARROW",    "PLUS_ASSIGN", "MINUS_ASSIGN", "STAR_ASSIGN", "SLASH_ASSIGN",
         "EQ",       "NEQ",         "LT",           "GT",          "LE",

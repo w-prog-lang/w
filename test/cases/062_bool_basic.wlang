@@ -1,0 +1,23 @@
+fn is_even: bool <- (x: int32) {
+    return x % 2 == 0;
+}
+
+fn main: int32 <- () {
+    flag := true;
+    var count := 0;
+    if (flag) {
+        count += 1;
+    }
+    if (is_even(4)) {
+        count += 2;
+    }
+    if (!false) {
+        count += 4;
+    }
+    ok := 3 < 5;         // comparisons yield bool
+    if (ok && true) {
+        count += 8;
+    }
+    wide: int32 = true;  // bool widens into any integer type
+    return count + wide; // 16
+}

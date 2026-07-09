@@ -250,6 +250,10 @@ static void print_node(Node* n, int depth) {
             printf("Num %.*s\n", n->as.num.len, n->as.num.text);
             break;
 
+        case NODE_BOOL:
+            printf("Bool %s\n", n->as.boolean.value ? "true" : "false");
+            break;
+
         case NODE_STRING:
             printf("String \"%.*s\"\n", n->as.str.len, n->as.str.text);
             break;

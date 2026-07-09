@@ -1,0 +1,4 @@
+fn main: int32 <- () {
+    b: bool = 5;  // an integer does not narrow into bool
+    return 0;
+}

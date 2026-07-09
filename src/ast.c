@@ -11,9 +11,9 @@ const char* node_kind_name(NodeKind kind) {
     static const char* names[] = {
         "PROGRAM",      "FUNC_DECL",    "BLOCK",        "VAR_DECL", "ASSIGN",
         "IF",           "LOOP",         "RETURN",       "BINOP",    "UNARY",
-        "CALL",         "IDENT",        "NUM",          "STRING",   "INDEX",
-        "INDEX_ASSIGN", "STRUCT_DECL",  "FIELD",        "FIELD_ASSIGN",
-        "BREAK",        "CONTINUE",     "IMPORT",
+        "CALL",         "IDENT",        "NUM",          "BOOL",     "STRING",
+        "INDEX",        "INDEX_ASSIGN", "STRUCT_DECL",  "FIELD",
+        "FIELD_ASSIGN", "BREAK",        "CONTINUE",     "IMPORT",
     };
     return names[kind];
 }
