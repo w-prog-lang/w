@@ -1,0 +1,22 @@
+#import <raylib.h>
+
+fn main: int32 <- () {
+    screen_width := 800;
+    screen_height := 450;
+
+    InitWindow(screen_width, screen_height, "raylib demo (W)");
+    SetTargetFPS(60);
+
+    loop (!WindowShouldClose()) {
+        BeginDrawing();
+        // W has no struct literals or bare C macro references (RAYWHITE etc.
+        // are macros, not calls), so colors go through raylib's own
+        // hex-to-Color conversion instead: 0xF5F5F5FF -> raylib's RAYWHITE.
+        ClearBackground(GetColor(4126537215));
+        DrawText("Hello from W!", 320, 200, 20, GetColor(255));
+        EndDrawing();
+    }
+
+    CloseWindow();
+    return 0;
+}
