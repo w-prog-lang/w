@@ -62,6 +62,18 @@ static const char* op_str(TokenKind op) {
             return "&&";
         case TOK_OR_OR:
             return "||";
+        case TOK_AMP:
+            return "&";
+        case TOK_PIPE:
+            return "|";
+        case TOK_CARET:
+            return "^";
+        case TOK_TILDE:
+            return "~";
+        case TOK_SHL:
+            return "<<";
+        case TOK_SHR:
+            return ">>";
         default:
             return "?";
     }

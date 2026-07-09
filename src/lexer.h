@@ -40,6 +40,12 @@ typedef enum {
     TOK_BANG,      // !
     TOK_AND_AND,   // &&
     TOK_OR_OR,     // ||
+    TOK_AMP,       // &
+    TOK_PIPE,      // |
+    TOK_CARET,     // ^
+    TOK_TILDE,     // ~
+    TOK_SHL,       // <<
+    TOK_SHR,       // >>
 
     TOK_LPAREN,
     TOK_RPAREN,

@@ -184,7 +184,25 @@ static Token lex_lt(Lexer* lx) {
         advance(lx);
         return make_token(lx, TOK_ARROW, start, 2);
     }
+    if (peek(lx) == '<') {
+        advance(lx);
+        return make_token(lx, TOK_SHL, start, 2);
+    }
     return make_token(lx, TOK_LT, start, 1);
+}
+
+static Token lex_gt(Lexer* lx) {
+    const char* start = lx->src + lx->pos;
+    advance(lx);  // consume '>'
+    if (peek(lx) == '=') {
+        advance(lx);
+        return make_token(lx, TOK_GE, start, 2);
+    }
+    if (peek(lx) == '>') {
+        advance(lx);
+        return make_token(lx, TOK_SHR, start, 2);
+    }
+    return make_token(lx, TOK_GT, start, 1);
 }
 
 Token lexer_next(Lexer* lx) {
@@ -252,11 +270,17 @@ Token lexer_next(Lexer* lx) {
         case '!':
             return lex_two_char(lx, '=', TOK_NEQ, TOK_BANG);
         case '>':
-            return lex_two_char(lx, '=', TOK_GE, TOK_GT);
+            return lex_gt(lx);
         case '&':
-            return lex_two_char(lx, '&', TOK_AND_AND, TOK_ERROR);
+            return lex_two_char(lx, '&', TOK_AND_AND, TOK_AMP);
         case '|':
-            return lex_two_char(lx, '|', TOK_OR_OR, TOK_ERROR);
+            return lex_two_char(lx, '|', TOK_OR_OR, TOK_PIPE);
+        case '^':
+            advance(lx);
+            return make_token(lx, TOK_CARET, start, 1);
+        case '~':
+            advance(lx);
+            return make_token(lx, TOK_TILDE, start, 1);
         default:
             advance(lx);
             return make_token(lx, TOK_ERROR, start, 1);
@@ -271,10 +295,11 @@ const char* token_kind_name(TokenKind kind) {
         "STAR",     "SLASH",       "PERCENT",      "ASSIGN",   "DEFINE",
         "ARROW",    "PLUS_ASSIGN", "MINUS_ASSIGN", "STAR_ASSIGN", "SLASH_ASSIGN",
         "EQ",       "NEQ",         "LT",           "GT",          "LE",
-        "GE",       "BANG",        "AND_AND",      "OR_OR",       "LPAREN",
-        "RPAREN",   "LBRACE",      "RBRACE",       "LBRACKET",    "RBRACKET",
-        "COMMA",    "SEMI",        "COLON",        "DOT",         "IMPORT",
-        "ERROR",
+        "GE",       "BANG",        "AND_AND",      "OR_OR",       "AMP",
+        "PIPE",     "CARET",       "TILDE",        "SHL",         "SHR",
+        "LPAREN",   "RPAREN",      "LBRACE",       "RBRACE",      "LBRACKET",
+        "RBRACKET", "COMMA",       "SEMI",         "COLON",       "DOT",
+        "IMPORT",   "ERROR",
     };
     return names[kind];
 }

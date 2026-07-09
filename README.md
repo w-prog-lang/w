@@ -133,10 +133,10 @@ semantic rules, the C translation model, and a full grammar — lives in
 
 The pipeline compiles a working subset of the language end to end: functions,
 structs, fixed-size arrays, strings, integer arithmetic, the full set of
-comparison and logical operators, `if`/`else if`/`else`, all three `loop` forms,
-`break`/`continue`, compound assignment, a variadic `print` builtin, a C-like
-`printf` builtin whose format string is checked at compile time, and `#import`
-of both W libraries and C headers. All 52 test cases pass.
+comparison, logical, and bitwise operators, `if`/`else if`/`else`, all three
+`loop` forms, `break`/`continue`, compound assignment, a variadic `print`
+builtin, a C-like `printf` builtin whose format string is checked at compile
+time, and `#import` of both W libraries and C headers. All 54 test cases pass.
 
 Known gaps, described in the guide's *Current limitations* section, include the
 absence of a floating-point type, the lack of a return-type compatibility check,

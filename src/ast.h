@@ -105,7 +105,7 @@ struct Node {
         } binop;
 
         struct {
-            TokenKind op;  // TOK_BANG or TOK_MINUS
+            TokenKind op;  // TOK_BANG, TOK_MINUS, or TOK_TILDE
             Node* operand;
         } unary;
 

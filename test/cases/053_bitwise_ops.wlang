@@ -1,0 +1,11 @@
+fn main: int32 <- () {
+    a := 12;
+    b := 10;
+    band := a & b;     // 8
+    bor := a | b;      // 14
+    bxor := a ^ b;     // 6
+    shl := a << 2;     // 48
+    shr := a >> 2;     // 3
+    notv := ~a & 15;   // ~12 = -13; -13 & 15 = 3
+    return band + bor + bxor + shl + shr + notv;  // 82
+}

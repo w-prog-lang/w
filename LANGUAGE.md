@@ -143,6 +143,7 @@ processing**. An unterminated string is a lexical error.
 | Category    | Tokens                                            |
 | ----------- | ------------------------------------------------- |
 | Arithmetic  | `+`  `-`  `*`  `/`  `%`                            |
+| Bitwise     | `&`  `|`  `^`  `~`  `<<`  `>>`                     |
 | Assignment  | `=`  `:=`  `+=`  `-=`  `*=`  `/=`                  |
 | Comparison  | `==`  `!=`  `<`  `>`  `<=`  `>=`                   |
 | Logical     | `&&`  `||`  `!`                                    |
@@ -150,8 +151,7 @@ processing**. An unterminated string is a lexical error.
 | Punctuation | `(` `)` `{` `}` `[` `]` `,` `;` `:` `.`           |
 
 `:=` is the *define* operator (inferred-type declaration). `<-` is a single token
-used in function signatures. A lone `&` or `|` (not doubled) is a lexical error —
-there are no bitwise operators.
+used in function signatures.
 
 ### The import directive
 
@@ -451,20 +451,28 @@ is left-associative except unary, which is right-associative):
 | 1     | `||`                              | logical or                |
 | 2     | `&&`                              | logical and               |
 | 3     | `==` `!=` `<` `>` `<=` `>=`        | comparison                |
-| 4     | `+` `-`                           | additive                  |
-| 5     | `*` `/` `%`                       | multiplicative            |
-| 6     | `!` `-` (prefix)                  | unary not / negation      |
+| 4     | `+` `-` `|` `^`                   | additive / bitwise or, xor |
+| 5     | `*` `/` `%` `&` `<<` `>>`         | multiplicative / bitwise and, shifts |
+| 6     | `!` `-` `~` (prefix)              | unary not / negation / complement |
 | 7     | `.` `[]` and call `()`            | postfix access / call     |
 
 Parentheses group as usual. There is no boolean type: comparisons and logical
 operators produce integers, and any integer expression can serve as a condition.
 A binary arithmetic expression takes the wider of its operand types.
 
+W places the bitwise operators where Go does, not where C does: `&` and the
+shifts bind like `*`, while `|` and `^` bind like `+`, and all of them bind
+*tighter* than comparisons. So `x & 4 == 4` means `(x & 4) == 4` — the
+common intent — rather than C's surprising `x & (4 == 4)`. The generated C is
+fully parenthesized, so C's own precedence never leaks through.
+
 ```w
 var a := (1 + 2) * 3;      // 9
 var ok := a > 5 && a < 20; // integer result usable as a condition
 var neg := -a;             // unary negation
 var not := !0;             // logical not
+var msk := a & 7 | 16;     // (a & 7) | 16
+var inv := ~a;             // bitwise complement
 ```
 
 ---
@@ -783,9 +791,9 @@ expr           = logical_or ;
 logical_or     = logical_and { "||" logical_and } ;
 logical_and    = comparison { "&&" comparison } ;
 comparison     = additive { ( "==" | "!=" | "<" | ">" | "<=" | ">=" ) additive } ;
-additive       = term { ( "+" | "-" ) term } ;
-term           = unary { ( "*" | "/" | "%" ) unary } ;
-unary          = ( "!" | "-" ) unary | primary ;
+additive       = term { ( "+" | "-" | "|" | "^" ) term } ;
+term           = unary { ( "*" | "/" | "%" | "&" | "<<" | ">>" ) unary } ;
+unary          = ( "!" | "-" | "~" ) unary | primary ;
 primary        = primary_base { "." IDENT | "[" expr "]" } ;
 primary_base   = IDENT
                | IDENT "(" [ args ] ")"
@@ -816,8 +824,6 @@ They are the natural places to contribute.
   logical operators yield integers.
 - **No escape sequences in strings.** A string literal is the raw bytes between the
   quotes; sequences like `\n` are not interpreted.
-- **No bitwise operators.** A single `&` or `|` is a lexical error; only `&&` and
-  `||` exist.
 - **Imports share one flat namespace.** `#import <lib.wlang>` merges the library's
   declarations directly into the program — there is no qualification or
   renaming, so a name collision across files is a redefinition error.

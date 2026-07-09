@@ -181,9 +181,9 @@ static Node* parse_primary(Parser* p) {
     return base;
 }
 
-// unary := ('!' | '-') unary | primary
+// unary := ('!' | '-' | '~') unary | primary
 static Node* parse_unary(Parser* p) {
-    if (check(p, TOK_BANG) || check(p, TOK_MINUS)) {
+    if (check(p, TOK_BANG) || check(p, TOK_MINUS) || check(p, TOK_TILDE)) {
         TokenKind op = p->cur.kind;
         int line = p->cur.line;
         advance(p);
@@ -195,10 +195,16 @@ static Node* parse_unary(Parser* p) {
     return parse_primary(p);
 }
 
-// term := unary (('*' | '/' | '%') unary)*
+// term := unary (('*' | '/' | '%' | '&' | '<<' | '>>') unary)*
+//
+// bitwise '&' and the shifts sit at the multiplicative level, and '|'/'^'
+// at the additive level (see parse_additive) -- Go's precedence, not C's,
+// so bitwise ops bind tighter than comparisons and 'x & 4 == 4' means
+// '(x & 4) == 4'
 static Node* parse_term(Parser* p) {
     Node* left = parse_unary(p);
-    while (check(p, TOK_STAR) || check(p, TOK_SLASH) || check(p, TOK_PERCENT)) {
+    while (check(p, TOK_STAR) || check(p, TOK_SLASH) || check(p, TOK_PERCENT) ||
+           check(p, TOK_AMP) || check(p, TOK_SHL) || check(p, TOK_SHR)) {
         TokenKind op = p->cur.kind;
         int line = p->cur.line;
         advance(p);
@@ -212,10 +218,11 @@ static Node* parse_term(Parser* p) {
     return left;
 }
 
-// additive := term (('+' | '-') term)*
+// additive := term (('+' | '-' | '|' | '^') term)*
 static Node* parse_additive(Parser* p) {
     Node* left = parse_term(p);
-    while (check(p, TOK_PLUS) || check(p, TOK_MINUS)) {
+    while (check(p, TOK_PLUS) || check(p, TOK_MINUS) || check(p, TOK_PIPE) ||
+           check(p, TOK_CARET)) {
         TokenKind op = p->cur.kind;
         int line = p->cur.line;
         advance(p);

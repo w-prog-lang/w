@@ -53,8 +53,29 @@ static const char* binop_str(TokenKind op) {
             return "&&";
         case TOK_OR_OR:
             return "||";
+        case TOK_AMP:
+            return "&";
+        case TOK_PIPE:
+            return "|";
+        case TOK_CARET:
+            return "^";
+        case TOK_SHL:
+            return "<<";
+        case TOK_SHR:
+            return ">>";
         default:
             return "?";
+    }
+}
+
+static const char* unary_str(TokenKind op) {
+    switch (op) {
+        case TOK_BANG:
+            return "!";
+        case TOK_TILDE:
+            return "~";
+        default:
+            return "-";
     }
 }
 
@@ -121,7 +142,7 @@ static void emit_expr(FILE* out, Node* n) {
             break;
 
         case NODE_UNARY:
-            fprintf(out, "(%s", n->as.unary.op == TOK_BANG ? "!" : "-");
+            fprintf(out, "(%s", unary_str(n->as.unary.op));
             emit_expr(out, n->as.unary.operand);
             fprintf(out, ")");
             break;
