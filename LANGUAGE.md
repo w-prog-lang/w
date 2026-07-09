@@ -147,10 +147,10 @@ a semantic error. An unterminated string is a lexical error.
 | Category    | Tokens                                            |
 | ----------- | ------------------------------------------------- |
 | Arithmetic  | `+`  `-`  `*`  `/`  `%`                            |
-| Bitwise     | `&`  `|`  `^`  `~`  `<<`  `>>`                     |
+| Bitwise     | `&`  `\|`  `^`  `~`  `<<`  `>>`                     |
 | Assignment  | `=`  `:=`  `+=`  `-=`  `*=`  `/=`                  |
 | Comparison  | `==`  `!=`  `<`  `>`  `<=`  `>=`                   |
-| Logical     | `&&`  `||`  `!`                                    |
+| Logical     | `&&`  `\|\|`  `!`                                    |
 | Arrow       | `<-`  (function parameter arrow)                  |
 | Punctuation | `(` `)` `{` `}` `[` `]` `,` `;` `:` `.`           |
 
@@ -522,10 +522,10 @@ is left-associative except unary, which is right-associative):
 
 | Level | Operators                         | Description               |
 | ----- | --------------------------------- | ------------------------- |
-| 1     | `||`                              | logical or                |
+| 1     | `\|\|`                              | logical or                |
 | 2     | `&&`                              | logical and               |
 | 3     | `==` `!=` `<` `>` `<=` `>=`        | comparison                |
-| 4     | `+` `-` `|` `^`                   | additive / bitwise or, xor |
+| 4     | `+` `-` `\|` `^`                   | additive / bitwise or, xor |
 | 5     | `*` `/` `%` `&` `<<` `>>`         | multiplicative / bitwise and, shifts |
 | 6     | `!` `-` `~` (prefix)              | unary not / negation / complement |
 | 7     | `.` `[]` and call `()`            | postfix access / call     |
