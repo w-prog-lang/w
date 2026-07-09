@@ -7,8 +7,9 @@ Where the compiler has a rough edge or an unimplemented corner, this guide says 
 in [Current limitations](#current-limitations) instead of pretending otherwise.
 
 W is a small, statically-typed language that transpiles to C. A W program is a set
-of top-level import, function, and struct declarations; the compiler type-checks
-them and emits a C translation unit you can compile with any C compiler.
+of top-level import, function, struct, and global-variable declarations; the
+compiler type-checks them and emits a C translation unit you can compile with any
+C compiler.
 
 ## Contents
 
@@ -276,6 +277,32 @@ the type explicitly; with `var` and an explicit type, the initializer is optiona
 (the variable is declared but unset, just as in C).
 
 Every statement-level declaration ends with a semicolon.
+
+### Global bindings
+
+All four spellings are also legal at the top level of a file, alongside `fn` and
+`struct` declarations. A global is visible to every function regardless of
+declaration order, and a local declaration of the same name shadows it.
+
+```w
+var counter := 0;      // mutable global
+limit := 3;            // constant global
+
+fn bump: int32 <- () {
+    counter += 1;
+    return counter;
+}
+```
+
+Two restrictions, both inherited from C's file-scope rules:
+
+- A global's initializer must be a **constant expression** — literals combined
+  with operators. Naming another variable, calling a function, or indexing
+  anything is a semantic error.
+- As with locals, redeclaring an existing global name is an error.
+
+Globals declared by an imported W library are merged into the program exactly
+like its functions and structs.
 
 ---
 
@@ -675,11 +702,11 @@ legal.
 
 ### W libraries (`.wlang`)
 
-A W library is just an ordinary `.wlang` file of `fn` and `struct` declarations (and
-possibly further imports). Importing it reads, parses, and merges its
-declarations into the importing program, as if everything had been written in
-one file; the merged declarations are type-checked together with the rest of the
-program.
+A W library is just an ordinary `.wlang` file of `fn`, `struct`, and global
+declarations (and possibly further imports). Importing it reads, parses, and
+merges its declarations into the importing program, as if everything had been
+written in one file; the merged declarations are type-checked together with the
+rest of the program.
 
 - Paths are resolved **relative to the directory of the importing file**: a
   library in a subdirectory is imported as `#import <libs/mathlib.wlang>`, while a
@@ -795,7 +822,7 @@ terminals produced by the lexer (`IDENT`, `NUM`, `STRING`); `?` marks optional
 parts, `*` repetition, and `|` alternatives.
 
 ```ebnf
-program        = { import_decl | func_decl | struct_decl } ;
+program        = { import_decl | func_decl | struct_decl | var_decl } ;
 
 import_decl    = "#import" "<" PATH ">" ;
                  (* the lexer folds the whole directive into one token;
@@ -876,5 +903,3 @@ They are the natural places to contribute.
   undeclared function is assumed to be a C function whose result is exempt
   from type checks — a typo'd function name is then caught only by the C
   compiler.
-- **No global variables.** Top-level declarations are imports, functions, and
-  structs; all state lives in locals and parameters.

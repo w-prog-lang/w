@@ -1,0 +1,9 @@
+fn five: int32 <- () {
+    return 5;
+}
+
+g := five();  // global initializers must be constant expressions
+
+fn main: int32 <- () {
+    return 0;
+}

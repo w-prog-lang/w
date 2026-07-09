@@ -123,6 +123,10 @@ static void process_program(Importer* im, Node* file_prog,
             ptrlist_push(&im->root->as.program.funcs,
                          lib->as.program.funcs.items[j]);
         }
+        for (int j = 0; j < lib->as.program.globals.count; j++) {
+            ptrlist_push(&im->root->as.program.globals,
+                         lib->as.program.globals.items[j]);
+        }
     }
 }
 

@@ -1,0 +1,17 @@
+var counter := 0;
+limit := 3;
+var total: int32 = 100;
+
+fn bump: int32 <- () {
+    counter += 1;
+    return counter;
+}
+
+fn main: int32 <- () {
+    bump();
+    bump();
+    loop (counter < limit) {
+        counter += 1;
+    }
+    return counter + total - 95;  // 3 + 100 - 95 = 8
+}

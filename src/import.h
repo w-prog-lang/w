@@ -5,7 +5,8 @@
 #include "util.h"
 
 // resolves every #import in `program` (which was parsed from `main_path`):
-// each '.wlang' import is read, parsed, and its functions/structs merged into
+// each '.wlang' import is read, parsed, and its functions/structs/globals
+// merged into
 // `program`; each '.h' import is collected (deduplicated) back onto the
 // program's import list for codegen to emit as a C #include. the source
 // buffer of every imported file is pushed onto `buffers` -- the AST points

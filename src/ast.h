@@ -54,6 +54,7 @@ struct Node {
             PtrList imports;
             PtrList funcs;
             PtrList structs;
+            PtrList globals;  // NODE_VAR_DECLs at file scope
         } program;
 
         struct {

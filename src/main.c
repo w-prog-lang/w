@@ -106,6 +106,9 @@ static void print_node(Node* n, int depth) {
             for (int i = 0; i < n->as.program.structs.count; i++) {
                 print_node((Node*)n->as.program.structs.items[i], depth + 1);
             }
+            for (int i = 0; i < n->as.program.globals.count; i++) {
+                print_node((Node*)n->as.program.globals.items[i], depth + 1);
+            }
             for (int i = 0; i < n->as.program.funcs.count; i++) {
                 print_node((Node*)n->as.program.funcs.items[i], depth + 1);
             }

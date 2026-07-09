@@ -888,8 +888,35 @@ static void check_stmt(Sema* s, Node* n) {
     }
 }
 
+// C requires file-scope initializers to be constant expressions, so a global's
+// initializer may use only literals and operators -- no names, calls, or
+// accesses
+static void check_global_init(Sema* s, Node* n, const char* gname, int glen) {
+    if (!n) return;
+    switch (n->kind) {
+        case NODE_NUM:
+        case NODE_BOOL:
+        case NODE_STRING:
+            return;
+        case NODE_BINOP:
+            check_global_init(s, n->as.binop.left, gname, glen);
+            check_global_init(s, n->as.binop.right, gname, glen);
+            return;
+        case NODE_UNARY:
+            check_global_init(s, n->as.unary.operand, gname, glen);
+            return;
+        default:
+            error(s, n->line,
+                  "global initializer must be a constant expression", gname,
+                  glen);
+    }
+}
+
+// the function scope chains to the global scope (s->current at this point),
+// so globals resolve through the ordinary lookup path and locals may shadow
+// them
 static void check_func(Sema* s, Node* fn) {
-    s->current = scope_push(NULL);
+    s->current = scope_push(s->current);
     s->cur_return_type = fn->as.func_decl.return_type;
 
     for (int i = 0; i < fn->as.func_decl.param_count; i++) {
@@ -947,9 +974,23 @@ SemaResult sema_check(Node* program) {
                       fn->as.func_decl.return_type);
     }
 
+    // globals live in one shared scope that every function scope chains to;
+    // checking them via check_stmt reuses the local-declaration rules
+    // (redefinition, type validation, widening) on top of the constant-
+    // initializer restriction
+    s.current = scope_push(NULL);
+    for (int i = 0; i < program->as.program.globals.count; i++) {
+        Node* g = (Node*)program->as.program.globals.items[i];
+        check_global_init(&s, g->as.var_decl.init, g->as.var_decl.name,
+                          g->as.var_decl.name_len);
+        check_stmt(&s, g);
+    }
+
     for (int i = 0; i < program->as.program.funcs.count; i++) {
         check_func(&s, (Node*)program->as.program.funcs.items[i]);
     }
+
+    s.current = scope_pop(s.current);
 
     free(s.funcs);
     free(s.structs);

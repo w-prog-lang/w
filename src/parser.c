@@ -840,6 +840,7 @@ Node* parser_parse_program(Parser* p) {
     ptrlist_init(&n->as.program.imports);
     ptrlist_init(&n->as.program.funcs);
     ptrlist_init(&n->as.program.structs);
+    ptrlist_init(&n->as.program.globals);
 
     while (!check(p, TOK_EOF)) {
         if (check(p, TOK_KW_FN)) {
@@ -848,8 +849,16 @@ Node* parser_parse_program(Parser* p) {
             ptrlist_push(&n->as.program.structs, parse_struct_decl(p));
         } else if (check(p, TOK_IMPORT)) {
             ptrlist_push(&n->as.program.imports, parse_import_decl(p));
+        } else if (check(p, TOK_KW_VAR)) {
+            advance(p);  // consume 'var'
+            ptrlist_push(&n->as.program.globals, parse_var_decl(p, 1));
+        } else if (check(p, TOK_IDENT)) {
+            // the only top-level construct starting with an identifier is a
+            // constant global declaration
+            ptrlist_push(&n->as.program.globals, parse_var_decl(p, 0));
         } else {
-            error_at(p, p->cur, "expected '#import', 'fn' or 'struct'");
+            error_at(p, p->cur,
+                     "expected '#import', 'fn', 'struct', or a declaration");
             advance(p);
         }
     }

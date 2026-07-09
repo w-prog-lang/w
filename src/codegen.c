@@ -491,6 +491,13 @@ void codegen_emit(Node* program, FILE* out) {
         emit_struct(out, (Node*)program->as.program.structs.items[i]);
     }
 
+    // file-scope variables, before the functions that use them (a global
+    // declaration emits exactly like a local one at depth 0)
+    for (int i = 0; i < program->as.program.globals.count; i++) {
+        emit_stmt(out, (Node*)program->as.program.globals.items[i], 0);
+    }
+    if (program->as.program.globals.count > 0) fprintf(out, "\n");
+
     // forward-declare every function so W's any-order call rule survives the
     // translation to C (imported libraries land after the root file's code)
     int protos = 0;
