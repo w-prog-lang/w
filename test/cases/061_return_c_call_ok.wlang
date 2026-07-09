@@ -1,0 +1,7 @@
+// an unchecked C call has no known type, so returning it from an int32
+// main is allowed rather than rejected as a narrowing error
+#import <string.h>
+
+fn main: int32 <- () {
+    return strlen("seven!!");
+}

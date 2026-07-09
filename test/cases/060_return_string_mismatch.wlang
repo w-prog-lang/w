@@ -1,0 +1,7 @@
+fn label: string <- () {
+    return 42;  // an integer is not a string
+}
+
+fn main: int32 <- () {
+    return 0;
+}

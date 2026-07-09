@@ -1,0 +1,7 @@
+fn shrink: int8 <- (x: int64) {
+    return x;  // int64 does not fit the declared int8 return type
+}
+
+fn main: int32 <- () {
+    return shrink(1000);
+}

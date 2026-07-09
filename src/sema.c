@@ -44,6 +44,8 @@ typedef struct {
     int struct_cap;
     int loop_depth;
     int has_c_imports;
+    TypeRef cur_return_type;  // declared return type of the function being
+                              // checked, for validating 'return expr'
     int had_error;
 } Sema;
 
@@ -83,6 +85,19 @@ static TypeRef type_string(void) {
 static int is_string_type(TypeRef t) {
     return t.name != NULL && t.len == 6 && strncmp(t.name, "string", 6) == 0;
 }
+
+// synthetic type of a call into an unchecked C function: wlangc cannot see
+// what a C header declares, so values of this type are exempt from category
+// and widening checks in every direction. it never reaches codegen -- an
+// inferred declaration initialized from one is stamped int64 instead
+static const char TY_C_UNCHECKED[] = "<c>";
+
+static TypeRef type_c_unchecked(void) {
+    TypeRef t = {TY_C_UNCHECKED, 3, 0, 0};
+    return t;
+}
+
+static int is_unchecked_type(TypeRef t) { return t.name == TY_C_UNCHECKED; }
 
 // type yielded by indexing a symbol of type `t` with '[' expr ']'
 static TypeRef element_type_of(TypeRef t) {
@@ -474,11 +489,11 @@ static TypeRef infer_expr(Sema* s, Node* n) {
                 // assumed to come from that C header -- wlangc cannot see
                 // into C headers, so the arguments are still analyzed for
                 // their own errors but the call itself goes unchecked and
-                // its result is treated as int64
+                // its result type is exempt from further checks
                 for (int i = 0; i < n->as.call.arg_count; i++) {
                     infer_expr(s, n->as.call.args[i]);
                 }
-                return type_int64();
+                return type_c_unchecked();
             }
             if (!fi) {
                 error(s, n->line, "call to undeclared function",
@@ -494,6 +509,7 @@ static TypeRef infer_expr(Sema* s, Node* n) {
             for (int i = 0; i < n->as.call.arg_count; i++) {
                 TypeRef arg_type = infer_expr(s, n->as.call.args[i]);
                 if (!fi || i >= fi->param_count) continue;
+                if (is_unchecked_type(arg_type)) continue;
 
                 TypeRef param_type = fi->params[i].type;
                 if (is_string_type(param_type) != is_string_type(arg_type)) {
@@ -543,7 +559,10 @@ static void check_stmt(Sema* s, Node* n) {
                 }
                 if (n->as.var_decl.init) {
                     TypeRef init_type = infer_expr(s, n->as.var_decl.init);
-                    if (is_string_type(decl_type) != is_string_type(init_type)) {
+                    if (is_unchecked_type(init_type)) {
+                        // C call result: nothing to compare against
+                    } else if (is_string_type(decl_type) !=
+                               is_string_type(init_type)) {
                         error(s, n->line,
                               "type mismatch between declared type and "
                               "initializer",
@@ -557,6 +576,9 @@ static void check_stmt(Sema* s, Node* n) {
                 }
             } else {
                 decl_type = infer_expr(s, n->as.var_decl.init);
+                // a value stored from an unchecked C call gets a real,
+                // emittable type
+                if (is_unchecked_type(decl_type)) decl_type = type_int64();
                 n->as.var_decl.type = decl_type;
             }
 
@@ -579,7 +601,10 @@ static void check_stmt(Sema* s, Node* n) {
 
             TypeRef value_type = infer_expr(s, n->as.assign.value);
 
-            if (sym && is_string_type(sym->type) != is_string_type(value_type)) {
+            if (sym && is_unchecked_type(value_type)) {
+                // C call result: nothing to compare against
+            } else if (sym &&
+                       is_string_type(sym->type) != is_string_type(value_type)) {
                 error(s, n->line, "type mismatch in assignment", name, len);
             } else if (sym && type_rank(value_type) > type_rank(sym->type)) {
                 error(s, n->line, "assigned value type too wide for variable",
@@ -610,7 +635,9 @@ static void check_stmt(Sema* s, Node* n) {
             TypeRef value_type = infer_expr(s, n->as.index_assign.value);
             TypeRef elem_type = element_type_of(base_type);
 
-            if (is_string_type(elem_type) != is_string_type(value_type)) {
+            if (is_unchecked_type(value_type)) {
+                // C call result: nothing to compare against
+            } else if (is_string_type(elem_type) != is_string_type(value_type)) {
                 error(s, n->line, "type mismatch in assignment",
                       root->as.ident.name, root->as.ident.len);
             } else if (!is_string_type(elem_type) &&
@@ -637,7 +664,9 @@ static void check_stmt(Sema* s, Node* n) {
                                   n->as.field_assign.field_len, n->line);
             TypeRef value_type = infer_expr(s, n->as.field_assign.value);
 
-            if (is_string_type(field_type) != is_string_type(value_type)) {
+            if (is_unchecked_type(value_type)) {
+                // C call result: nothing to compare against
+            } else if (is_string_type(field_type) != is_string_type(value_type)) {
                 error(s, n->line, "type mismatch in assignment",
                       n->as.field_assign.field, n->as.field_assign.field_len);
             } else if (!is_string_type(field_type) &&
@@ -713,7 +742,29 @@ static void check_stmt(Sema* s, Node* n) {
 
         case NODE_RETURN:
             if (n->as.return_stmt.expr) {
-                infer_expr(s, n->as.return_stmt.expr);
+                TypeRef got = infer_expr(s, n->as.return_stmt.expr);
+                TypeRef want = s->cur_return_type;
+                if (is_unchecked_type(got)) break;  // C call result
+
+                // struct return types must match by name; otherwise apply
+                // the same category/widening rule as assignments
+                StructInfo* want_struct = lookup_struct(s, want.name, want.len);
+                StructInfo* got_struct = lookup_struct(s, got.name, got.len);
+                if (want_struct || got_struct) {
+                    if (want_struct != got_struct) {
+                        error(s, n->line, "return type mismatch", want.name,
+                              want.len);
+                    }
+                } else if (is_string_type(want) != is_string_type(got)) {
+                    error(s, n->line, "return type mismatch", want.name,
+                          want.len);
+                } else if (!is_string_type(want) &&
+                           type_rank(got) > type_rank(want)) {
+                    error(s, n->line,
+                          "returned value type too wide for declared return "
+                          "type",
+                          want.name, want.len);
+                }
             }
             break;
 
@@ -725,6 +776,7 @@ static void check_stmt(Sema* s, Node* n) {
 
 static void check_func(Sema* s, Node* fn) {
     s->current = scope_push(NULL);
+    s->cur_return_type = fn->as.func_decl.return_type;
 
     for (int i = 0; i < fn->as.func_decl.param_count; i++) {
         Param* param = &fn->as.func_decl.params[i];
@@ -749,6 +801,7 @@ SemaResult sema_check(Node* program) {
     s.struct_cap = 0;
     s.loop_depth = 0;
     s.has_c_imports = 0;
+    s.cur_return_type = type_int64();
     s.had_error = 0;
 
     for (int i = 0; i < program->as.program.imports.count; i++) {

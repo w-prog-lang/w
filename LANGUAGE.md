@@ -341,9 +341,15 @@ argument's type is not wider than the corresponding parameter's type. All functi
 are visible to one another regardless of declaration order, because the analyzer
 registers every function before checking any body.
 
-> **Note:** the compiler does not currently check that a `return` expression's type
-> is compatible with the declared return type. See
-> [Current limitations](#current-limitations).
+A `return` expression is checked against the declared return type with the same
+rule as assignments: a narrower integer widens into a wider return type, but a
+too-wide value, a string/integer mix, or a wrong struct type is an error.
+
+```w
+fn shrink: int8 <- (x: int64) {
+    return x;   // error: returned value type too wide
+}
+```
 
 ---
 
@@ -657,9 +663,11 @@ The compiler does not read C headers, so it cannot know what they declare. When
 at least one `.h` import is present, a call to a function name that no W
 declaration provides is **assumed to come from a C header**: its arguments are
 still checked as expressions, but the call itself is emitted as-is for the C
-compiler to resolve, and its result is treated as `int64`. Without any `.h`
-import, calling an undeclared function remains a semantic error, exactly as
-before.
+compiler to resolve. Its result has no known type, so it is exempt from the
+category and widening checks wherever it is used directly (returned, assigned,
+passed as an argument); once stored into an inferred `:=` declaration, the
+variable is typed `int64`. Without any `.h` import, calling an undeclared
+function remains a semantic error, exactly as before.
 
 ```w
 #import <string.h>
@@ -823,9 +831,6 @@ They are the natural places to contribute.
   literal, and the code generator passes the literal text through to C verbatim,
   but the type system reads only the integer part when inferring a type. As a
   result `3.14` is typed as `int8`. Treat all numbers as integers for now.
-- **No return-type check.** A `return` expression is analyzed, but its type is not
-  compared against the function's declared return type, so a too-wide value can be
-  returned without a diagnostic.
 - **No boolean type.** Conditions are ordinary integer expressions; comparison and
   logical operators yield integers.
 - **Imports share one flat namespace.** `#import <lib.wlang>` merges the library's
@@ -835,7 +840,8 @@ They are the natural places to contribute.
   imported library is attributed to its line in that library without saying
   which file it came from.
 - **C imports are unchecked.** Once any `.h` is imported, a call to an
-  undeclared function is assumed to be a C function and typed `int64` — a
-  typo'd function name is then caught only by the C compiler.
+  undeclared function is assumed to be a C function whose result is exempt
+  from type checks — a typo'd function name is then caught only by the C
+  compiler.
 - **No global variables.** Top-level declarations are imports, functions, and
   structs; all state lives in locals and parameters.
