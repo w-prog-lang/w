@@ -303,6 +303,27 @@ static Node* find_root_ident(Node* n) {
 
 static TypeRef infer_expr(Sema* s, Node* n);
 
+// string literals are emitted into the generated C verbatim, so only escape
+// sequences that mean the same thing in a C string literal are allowed --
+// rejecting the rest here beats a cryptic C compiler error later
+static void check_string_escapes(Sema* s, Node* str) {
+    const char* text = str->as.str.text;
+    int len = str->as.str.len;
+    for (int i = 0; i < len; i++) {
+        if (text[i] != '\\') continue;
+        if (i + 1 >= len) {
+            error(s, str->line, "incomplete escape sequence at end of string",
+                  "\\", 1);
+            break;
+        }
+        char e = text[++i];
+        if (e != 'n' && e != 't' && e != 'r' && e != '\\' && e != '"' &&
+            e != '0') {
+            error(s, str->line, "unsupported escape sequence", &text[i - 1], 2);
+        }
+    }
+}
+
 // validates a printf() builtin call: the first argument must be a string
 // literal, and its %d/%s directives must line up one-to-one with the types
 // of the remaining arguments ('%%' is a literal percent)
@@ -324,6 +345,8 @@ static void check_printf(Sema* s, Node* n) {
         }
         return;
     }
+
+    check_string_escapes(s, fmt);
 
     const char* text = fmt->as.str.text;
     int len = fmt->as.str.len;
@@ -397,6 +420,7 @@ static TypeRef infer_expr(Sema* s, Node* n) {
             return infer_expr(s, n->as.unary.operand);
 
         case NODE_STRING:
+            check_string_escapes(s, n);
             return type_string();
 
         case NODE_INDEX: {

@@ -1,0 +1,4 @@
+fn main: int32 <- () {
+    s := "bad \q escape";
+    return 0;
+}

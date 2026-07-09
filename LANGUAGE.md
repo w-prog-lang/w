@@ -133,10 +133,14 @@ A string literal is text enclosed in double quotes:
 
 ```w
 "hello"
+"line1\nline2"
+"a quote: \" and a backslash: \\"
 ```
 
-The lexer scans from the opening quote to the next `"`; there is **no escape-sequence
-processing**. An unterminated string is a lexical error.
+Six escape sequences are recognized: `\n`, `\t`, `\r`, `\\`, `\"`, and `\0` —
+exactly the ones that mean the same thing in a C string literal, because the
+literal's text passes through to the generated C verbatim. Any other escape is
+a semantic error. An unterminated string is a lexical error.
 
 ### Operators and punctuation
 
@@ -436,7 +440,8 @@ fn main: int32 <- () {
 
 Because `string` is its own type category, it never mixes with integers in
 assignments, declarations, or call arguments — doing so is a type mismatch.
-String literals have no escape processing.
+String literals support the C-compatible escape sequences `\n`, `\t`, `\r`,
+`\\`, `\"`, and `\0` (see [Lexical structure](#lexical-structure)).
 
 ---
 
@@ -822,8 +827,6 @@ They are the natural places to contribute.
   literal will wrap around rather than be typed as `int128`.
 - **No boolean type.** Conditions are ordinary integer expressions; comparison and
   logical operators yield integers.
-- **No escape sequences in strings.** A string literal is the raw bytes between the
-  quotes; sequences like `\n` are not interpreted.
 - **Imports share one flat namespace.** `#import <lib.wlang>` merges the library's
   declarations directly into the program — there is no qualification or
   renaming, so a name collision across files is a redefinition error.

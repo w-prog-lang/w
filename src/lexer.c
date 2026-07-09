@@ -109,6 +109,11 @@ static Token lex_string(Lexer* lx) {
     advance(lx);
     const char* start = lx->src + lx->pos;
     while (!at_end(lx) && peek(lx) != '"') {
+        // a backslash escapes the next character, so an escaped '"' does not
+        // terminate the literal; which escapes are *valid* is checked in sema
+        if (peek(lx) == '\\' && lx->pos + 1 < lx->len) {
+            advance(lx);
+        }
         advance(lx);
     }
     int len = (int)((lx->src + lx->pos) - start);
