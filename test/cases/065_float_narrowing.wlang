@@ -1,0 +1,5 @@
+fn main: int32 <- () {
+    d: float64 = 1.5;
+    f: float32 = d;  // float64 does not fit float32
+    return 0;
+}

@@ -13,9 +13,9 @@ character:
   mutation with `var x := 42`.
 - **One looping keyword.** There is no `while` and no `for` — a single `loop`
   keyword covers infinite, condition-only, and three-clause loops.
-- **Sized integers, always.** The numeric types are `int8`, `int16`, `int32`,
+- **Sized numbers, always.** The integer types are `int8`, `int16`, `int32`,
   `int64`, and `int128`; a literal is inferred to the *smallest signed type that
-  fits it*.
+  fits it*. The float types are `float32` and `float64`.
 - **A distinct function arrow.** Functions are written
   `fn name: ReturnType <- (params) { ... }`.
 - **Source-level imports.** `#import <lib.wlang>` merges another W file into the
@@ -132,16 +132,16 @@ semantic rules, the C translation model, and a full grammar — lives in
 ## Status
 
 The pipeline compiles a working subset of the language end to end: functions,
-structs, fixed-size arrays, strings, a `bool` type, integer arithmetic, the
-full set of comparison, logical, and bitwise operators, `if`/`else if`/`else`,
-all three `loop` forms, `break`/`continue`, compound assignment, a variadic
-`print` builtin, a C-like `printf` builtin whose format string is checked at
-compile time, and `#import` of both W libraries and C headers. All 63 test
-cases pass.
+structs, fixed-size arrays, strings, `bool`, integer and floating-point
+arithmetic, the full set of comparison, logical, and bitwise operators,
+`if`/`else if`/`else`, all three `loop` forms, `break`/`continue`, compound
+assignment, a variadic `print` builtin, a C-like `printf` builtin whose format
+string is checked at compile time, and `#import` of both W libraries and C
+headers. All 67 test cases pass.
 
-Known gaps, described in the guide's *Current limitations* section, include
-the absence of a floating-point type. Contributions are grounded in the
-source first: read the relevant stage before changing it.
+The remaining gaps are described in the guide's *Current limitations* section.
+Contributions are grounded in the source first: read the relevant stage before
+changing it.
 
 ## License
 

@@ -56,6 +56,8 @@ static const char TY_INT16[] = "int16";
 static const char TY_INT32[] = "int32";
 static const char TY_INT64[] = "int64";
 static const char TY_INT128[] = "int128";
+static const char TY_FLOAT32[] = "float32";
+static const char TY_FLOAT64[] = "float64";
 static const char TY_STRING[] = "string";
 
 static TypeRef type_bool(void) {
@@ -82,6 +84,14 @@ static TypeRef type_int128(void) {
     TypeRef t = {TY_INT128, 6, 0, 0};
     return t;
 }
+static TypeRef type_float32(void) {
+    TypeRef t = {TY_FLOAT32, 7, 0, 0};
+    return t;
+}
+static TypeRef type_float64(void) {
+    TypeRef t = {TY_FLOAT64, 7, 0, 0};
+    return t;
+}
 static TypeRef type_string(void) {
     TypeRef t = {TY_STRING, 6, 0, 0};
     return t;
@@ -89,6 +99,25 @@ static TypeRef type_string(void) {
 
 static int is_string_type(TypeRef t) {
     return t.name != NULL && t.len == 6 && strncmp(t.name, "string", 6) == 0;
+}
+
+// synthetic type of a float literal: it adapts to whichever float type it
+// meets (rank just below float32), so 'f: float32 = 3.14' is legal even
+// though an inferred ':=' declaration stamps float64. never reaches codegen
+static const char TY_FLOATLIT[] = "<float literal>";
+
+static TypeRef type_floatlit(void) {
+    TypeRef t = {TY_FLOATLIT, 15, 0, 0};
+    return t;
+}
+
+static int is_floatlit_type(TypeRef t) { return t.name == TY_FLOATLIT; }
+
+static int is_float_type(TypeRef t) {
+    if (is_floatlit_type(t)) return 1;
+    return t.name != NULL && t.len == 7 &&
+           (strncmp(t.name, "float32", 7) == 0 ||
+            strncmp(t.name, "float64", 7) == 0);
 }
 
 // synthetic type of a call into an unchecked C function: wlangc cannot see
@@ -119,13 +148,18 @@ static TypeRef element_type_of(TypeRef t) {
 static int type_rank(TypeRef t) {
     if (t.name == NULL) return 3;  // unknown -> treat as int64
     // bool ranks below every integer: it widens into any of them, but no
-    // integer narrows into it
+    // integer narrows into it. floats rank above every integer: any integer
+    // widens into either float type, no float narrows into an integer, and
+    // a float literal adapts to either float type
     if (t.len == 4 && strncmp(t.name, "bool", 4) == 0) return -1;
     if (t.len == 4 && strncmp(t.name, "int8", 4) == 0) return 0;
     if (t.len == 5 && strncmp(t.name, "int16", 5) == 0) return 1;
     if (t.len == 5 && strncmp(t.name, "int32", 5) == 0) return 2;
     if (t.len == 5 && strncmp(t.name, "int64", 5) == 0) return 3;
     if (t.len == 6 && strncmp(t.name, "int128", 6) == 0) return 4;
+    if (is_floatlit_type(t)) return 5;
+    if (t.len == 7 && strncmp(t.name, "float32", 7) == 0) return 6;
+    if (t.len == 7 && strncmp(t.name, "float64", 7) == 0) return 7;
     return 3;  // unrecognized type name -> fall back to int64
 }
 
@@ -141,6 +175,12 @@ static TypeRef type_from_rank(int rank) {
             return type_int32();
         case 4:
             return type_int128();
+        case 5:
+            return type_floatlit();
+        case 6:
+            return type_float32();
+        case 7:
+            return type_float64();
         default:
             return type_int64();
     }
@@ -295,6 +335,8 @@ static int is_known_type_name(Sema* s, TypeRef t) {
     if (t.len == 5 && strncmp(t.name, "int32", 5) == 0) return 1;
     if (t.len == 5 && strncmp(t.name, "int64", 5) == 0) return 1;
     if (t.len == 6 && strncmp(t.name, "int128", 6) == 0) return 1;
+    if (t.len == 7 && strncmp(t.name, "float32", 7) == 0) return 1;
+    if (t.len == 7 && strncmp(t.name, "float64", 7) == 0) return 1;
     if (is_string_type(t)) return 1;
     return lookup_struct(s, t.name, t.len) != NULL;
 }
@@ -389,13 +431,22 @@ static void check_printf(Sema* s, Node* n) {
         }
         char d = text[++i];
         if (d == '%') continue;
-        if (d != 'd' && d != 's') {
+        if (d != 'd' && d != 's' && d != 'f') {
             error(s, n->line, "unsupported format directive", &text[i - 1], 2);
             continue;
         }
         if (next_arg < n->as.call.arg_count) {
             TypeRef arg_type = infer_expr(s, n->as.call.args[next_arg]);
-            if ((d == 's') != is_string_type(arg_type)) {
+            int ok;
+            if (d == 's') {
+                ok = is_string_type(arg_type);
+            } else if (d == 'f') {
+                ok = is_float_type(arg_type);
+            } else {
+                ok = !is_string_type(arg_type) && !is_float_type(arg_type);
+            }
+            if (is_unchecked_type(arg_type)) ok = 1;  // C call result
+            if (!ok) {
                 error(s, n->line,
                       "format directive does not match argument type",
                       &text[i - 1], 2);
@@ -424,6 +475,9 @@ static TypeRef infer_expr(Sema* s, Node* n) {
 
     switch (n->kind) {
         case NODE_NUM:
+            for (int i = 0; i < n->as.num.len; i++) {
+                if (n->as.num.text[i] == '.') return type_floatlit();
+            }
             return smallest_type_for_value(
                 parse_int_literal(s, n->line, n->as.num.text, n->as.num.len));
 
@@ -451,6 +505,26 @@ static TypeRef infer_expr(Sema* s, Node* n) {
                 case TOK_AND_AND:
                 case TOK_OR_OR:
                     return type_bool();
+                case TOK_PERCENT:
+                case TOK_AMP:
+                case TOK_PIPE:
+                case TOK_CARET:
+                case TOK_SHL:
+                case TOK_SHR:
+                    // these have no meaning for C's floating types either;
+                    // reject here instead of in the generated C
+                    if (is_float_type(lt) || is_float_type(rt)) {
+                        const char* sym =
+                            n->as.binop.op == TOK_PERCENT  ? "%"
+                            : n->as.binop.op == TOK_AMP    ? "&"
+                            : n->as.binop.op == TOK_PIPE   ? "|"
+                            : n->as.binop.op == TOK_CARET  ? "^"
+                            : n->as.binop.op == TOK_SHL    ? "<<"
+                                                           : ">>";
+                        error(s, n->line, "operator requires integer operands",
+                              sym, (int)strlen(sym));
+                    }
+                    return widen(lt, rt);
                 default:
                     return widen(lt, rt);
             }
@@ -460,6 +534,14 @@ static TypeRef infer_expr(Sema* s, Node* n) {
             if (n->as.unary.op == TOK_BANG) {
                 infer_expr(s, n->as.unary.operand);
                 return type_bool();
+            }
+            if (n->as.unary.op == TOK_TILDE) {
+                TypeRef t = infer_expr(s, n->as.unary.operand);
+                if (is_float_type(t)) {
+                    error(s, n->line, "operator requires integer operands",
+                          "~", 1);
+                }
+                return t;
             }
             return infer_expr(s, n->as.unary.operand);
 
@@ -606,9 +688,11 @@ static void check_stmt(Sema* s, Node* n) {
                 }
             } else {
                 decl_type = infer_expr(s, n->as.var_decl.init);
-                // a value stored from an unchecked C call gets a real,
-                // emittable type
+                // synthetic types get a real, emittable type when stored:
+                // an unchecked C call defaults to int64, a float literal to
+                // float64
                 if (is_unchecked_type(decl_type)) decl_type = type_int64();
+                if (is_floatlit_type(decl_type)) decl_type = type_float64();
                 n->as.var_decl.type = decl_type;
             }
 

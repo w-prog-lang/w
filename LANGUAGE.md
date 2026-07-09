@@ -119,12 +119,11 @@ names recognized during analysis and code generation (see
 ### Numeric literals
 
 A numeric literal is a run of digits, optionally followed by a decimal point and
-more digits. Numbers are integers in practice: the type system reads only the
-integer part of a literal (see [Current limitations](#current-limitations) for the
-decimal-point caveat).
+more digits. A literal without a decimal point is an integer; one with a decimal
+point is a float (both digits sides are required — write `0.5`, not `.5`).
 
 ```w
-0        42        255        1000000
+0        42        255        1000000        3.14        0.5
 ```
 
 ### String literals
@@ -174,8 +173,9 @@ See [Imports](#imports) for its meaning.
 
 ## Types
 
-W has four families of types: `bool`, sized integers, the string type, and
-user-defined structs. Arrays are formed from any of these with a fixed length.
+W has five families of types: `bool`, sized integers, sized floats, the string
+type, and user-defined structs. Arrays are formed from any of these with a
+fixed length.
 
 ### Integer types
 
@@ -189,6 +189,27 @@ user-defined structs. Arrays are formed from any of these with a fixed length.
 
 These form an ordered *rank*: `int8 < int16 < int32 < int64 < int128`. The rank
 drives inference, widening, and narrowing checks (see [The type system](#the-type-system)).
+
+### Floating-point types
+
+| W type    | C type   | Width               |
+| --------- | -------- | ------------------- |
+| `float32` | `float`  | 32-bit IEEE binary  |
+| `float64` | `double` | 64-bit IEEE binary  |
+
+Floats extend the rank order above every integer:
+`… < int128 < float32 < float64`. So any integer widens into either float type
+(precision loss at the wide end is the programmer's business, in keeping with
+the design philosophy), `float32` widens into `float64`, and no float ever
+narrows back into an integer.
+
+A float *literal* is special-cased: it adapts to whichever float type it is
+placed into, so `f: float32 = 3.14` and `d: float64 = 3.14` are both legal.
+Only when a literal's type must be materialized on its own — an inferred
+`x := 3.14` declaration — does it default to `float64`.
+
+`%`, the bitwise operators, and `~` require integer operands; applying them to
+a float is a semantic error.
 
 ### The bool type
 
@@ -590,20 +611,23 @@ almost always used as statements.
 
 ### `print`
 
-`print` takes **one or more** arguments, each of which may be any integer type or
-a `string`. It writes the values back to back — no separators — followed by a
-single trailing newline. Calling it with zero arguments is a semantic error.
+`print` takes **one or more** arguments, each of which may be any integer type,
+a float, a `bool`, or a `string`. It writes the values back to back — no
+separators — followed by a single trailing newline. Calling it with zero
+arguments is a semantic error.
 
 ```w
 print(42);                  // prints: 42
 print("hello");             // prints: hello
 print("x = ", 7, "!");      // prints: x = 7!
+print(1.5);                 // prints: 1.5
 ```
 
 In the generated C, each argument is dispatched through the `w_print_val`
-`_Generic` macro so the right formatting is chosen for integers versus strings,
-and a final helper emits the newline. The whole call is one comma expression, so
-`print` stays usable in expression position.
+`_Generic` macro so the right formatting is chosen per C type: strings print
+as-is, floats through `%g`, and everything else as an integer (a `bool` prints
+as `1` or `0`). A final helper emits the newline. The whole call is one comma
+expression, so `print` stays usable in expression position.
 
 ### `printf`
 
@@ -611,25 +635,27 @@ and a final helper emits the newline. The whole call is one comma expression, so
 time**. The first argument must be a string *literal* (not a variable); the
 remaining arguments must line up one-to-one with the format directives:
 
-| Directive | Matches                | Meaning                    |
-| --------- | ---------------------- | -------------------------- |
-| `%d`      | any integer type       | print the integer          |
-| `%s`      | `string`               | print the string           |
-| `%%`      | (consumes no argument) | a literal `%`              |
+| Directive | Matches                  | Meaning                    |
+| --------- | ------------------------ | -------------------------- |
+| `%d`      | any integer or `bool`    | print the integer          |
+| `%f`      | `float32` or `float64`   | print the float            |
+| `%s`      | `string`                 | print the string           |
+| `%%`      | (consumes no argument)   | a literal `%`              |
 
 ```w
 printf("%s is %d years old", "Ada", 36);   // Ada is 36 years old
+printf("pi is about %f", 3.14);            // pi is about 3.140000
 printf("100%%");                            // 100%
 ```
 
 Semantic analysis rejects: a non-literal format string, an unsupported directive
-(anything other than `%d`, `%s`, `%%`), a directive/argument type mismatch, and a
-directive count that disagrees with the argument count. Unlike `print`, `printf`
-appends **no** trailing newline.
+(anything other than `%d`, `%f`, `%s`, `%%`), a directive/argument type mismatch,
+and a directive count that disagrees with the argument count. Unlike `print`,
+`printf` appends **no** trailing newline.
 
 In the generated C, the call lowers onto C's own `printf`: every `%d` is rewritten
 to `%lld` with its argument cast to `long long` (W integers are up to 128 bits
-wide), and `%s` passes through unchanged.
+wide), every `%f` argument is cast to `double`, and `%s` passes through unchanged.
 
 ---
 
@@ -701,7 +727,8 @@ mapping is direct and predictable.
   `w_print_val` `_Generic` macro).
 - **Types.** W integer types map to the `<stdint.h>` fixed-width types (`int8` →
   `int8_t`, and so on); `int128` maps to the compiler builtin `__int128`; `bool`
-  maps to C's `bool`; `string` maps to `const char*`.
+  maps to C's `bool`; `float32`/`float64` map to `float`/`double`; `string` maps
+  to `const char*`.
 - **Structs** become C `typedef struct { ... } Name;` definitions, emitted before
   functions.
 - **Functions** become ordinary C functions. Every function except `main` is
@@ -839,10 +866,6 @@ args           = expr { "," expr } ;
 These are honest gaps in the current implementation, drawn from the source itself.
 They are the natural places to contribute.
 
-- **No floating-point type.** The lexer accepts a decimal point in a numeric
-  literal, and the code generator passes the literal text through to C verbatim,
-  but the type system reads only the integer part when inferring a type. As a
-  result `3.14` is typed as `int8`. Treat all numbers as integers for now.
 - **Imports share one flat namespace.** `#import <lib.wlang>` merges the library's
   declarations directly into the program — there is no qualification or
   renaming, so a name collision across files is a redefinition error.

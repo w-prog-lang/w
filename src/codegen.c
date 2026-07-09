@@ -19,6 +19,10 @@ static void emit_c_type(FILE* out, TypeRef t) {
         fprintf(out, "int64_t");
     } else if (t.len == 6 && strncmp(t.name, "int128", 6) == 0) {
         fprintf(out, "__int128");
+    } else if (t.len == 7 && strncmp(t.name, "float32", 7) == 0) {
+        fprintf(out, "float");
+    } else if (t.len == 7 && strncmp(t.name, "float64", 7) == 0) {
+        fprintf(out, "double");
     } else if (t.len == 6 && strncmp(t.name, "string", 6) == 0) {
         fprintf(out, "const char*");
     } else {
@@ -115,6 +119,10 @@ static void emit_printf_call(FILE* out, Node* n) {
         fprintf(out, ", ");
         if (d == 'd') {
             fprintf(out, "(long long)(");
+            emit_expr(out, n->as.call.args[next_arg]);
+            fprintf(out, ")");
+        } else if (d == 'f') {
+            fprintf(out, "(double)(");
             emit_expr(out, n->as.call.args[next_arg]);
             fprintf(out, ")");
         } else {
@@ -452,12 +460,16 @@ static void emit_print_preamble(FILE* out) {
             "static void w_print_i64(int64_t v) { "
             "printf(\"%%lld\", (long long)v); }\n");
     fprintf(out,
+            "static void w_print_f64(double v) { "
+            "printf(\"%%g\", v); }\n");
+    fprintf(out,
             "static void w_print_str(const char* v) { "
             "printf(\"%%s\", v); }\n");
     fprintf(out, "static void w_print_nl(void) { printf(\"\\n\"); }\n");
     fprintf(out,
             "#define w_print_val(x) _Generic((x), "
             "char*: w_print_str, const char*: w_print_str, "
+            "float: w_print_f64, double: w_print_f64, "
             "default: w_print_i64)(x)\n\n");
 }
 

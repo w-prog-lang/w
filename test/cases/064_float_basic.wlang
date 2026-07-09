@@ -1,0 +1,14 @@
+fn half: float64 <- (x: float64) {
+    return x / 2.0;
+}
+
+fn main: int32 <- () {
+    pi := 3.14;             // inferred float64
+    var r: float32 = 0.5;   // a float literal adapts to float32
+    printf("%f %f\n", pi, r);
+    printf("%f\n", half(9.0));
+    e: float64 = 2;         // integers widen into floats
+    printf("%f\n", e + 1);
+    print(1.5);             // print dispatches floats too
+    return 0;
+}

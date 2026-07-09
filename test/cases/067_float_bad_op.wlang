@@ -1,0 +1,4 @@
+fn main: int32 <- () {
+    x := 1.5 % 2;  // modulo requires integer operands
+    return 0;
+}

@@ -1,0 +1,4 @@
+fn main: int32 <- () {
+    n: int32 = 1.5;  // a float does not narrow into an integer
+    return 0;
+}
